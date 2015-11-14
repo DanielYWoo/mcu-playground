@@ -3,7 +3,7 @@
 // IR remote control
 #include <IRremote.h>
 #include <IRremoteInt.h>
-#define MARK_EXCESS 50
+#define MARK_EXCESS 20
 
 // pins definition
 #define PIN_WHEEL_L1    A0
@@ -12,22 +12,23 @@
 #define PIN_WHEEL_R2    A3
 #define PIN_SONIC_TRIG  A4 
 #define PIN_SONIC_ECHO  A5
+#define PIN_WHEEL_COUNTER_L 2
+#define PIN_WHEEL_COUNTER_R 3
+#define PIN_IR_RECV     4
 #define PIN_SERVO        5
 #define PIN_DETECTOR_1   6
 #define PIN_DETECTOR_2   7
 #define PIN_DETECTOR_3   8
 #define PIN_DETECTOR_4   9
-#define PIN_WHEEL_LPWM  11
-#define PIN_WHEEL_RPWM  10
-#define PIN_IR_RECV     12
+#define PIN_WHEEL_LPWM  10
+#define PIN_WHEEL_RPWM  11
+
 
 // speed feedback and PID control
 // 3.1415 * D(6.5cm) / 20, not used yet
 #define WHEEL_COUNTER_LEN 1.02101761
 // the normal speed, signal falls
-#define WHEEL_STD_SPEED 30
-#define PIN_WHEEL_COUNTER_L 2
-#define PIN_WHEEL_COUNTER_R 3
+#define WHEEL_STD_SPEED 12
 unsigned long wheelCounterL = 0;
 unsigned long wheelCounterR = 0;
 double wheelSpeedL = 0;
@@ -36,8 +37,8 @@ double wheelSetpointL = 0;
 double wheelSetpointR = 0;
 double wheelOutputL = 0;
 double wheelOutputR = 0;
-PID wheelLPID(&wheelSpeedL, &wheelOutputL, &wheelSetpointL, 1, 9.5, 0, DIRECT);
-PID wheelRPID(&wheelSpeedR, &wheelOutputR, &wheelSetpointR, 1, 9.5, 0, DIRECT);
+PID wheelLPID(&wheelSpeedL, &wheelOutputL, &wheelSetpointL, 1, 5, 0, DIRECT);
+PID wheelRPID(&wheelSpeedR, &wheelOutputR, &wheelSetpointR, 5, 5, 0, DIRECT);
 unsigned long wheelLastTime = millis();
 
 // robot constants
@@ -49,8 +50,6 @@ unsigned long wheelLastTime = millis();
 // IR receiver init
 IRrecv irrecv(PIN_IR_RECV);
 decode_results results;
-unsigned long lastIRCode = 0;
-unsigned long lastIRCodeTime = 0;
 
 void setup() {
   Serial.begin(9600);  
@@ -58,6 +57,7 @@ void setup() {
   pinMode(PIN_DETECTOR_2, INPUT);
   pinMode(PIN_DETECTOR_3, INPUT);
   pinMode(PIN_DETECTOR_4, INPUT);
+  
   irrecv.enableIRIn(); // init the IR receiver pin
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_COUNTER_L), countWheelL, FALLING);
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_COUNTER_R), countWheelR, FALLING);
@@ -74,17 +74,19 @@ void updateCurrentSpeed() {
   unsigned long now = millis();
   double elapsed = now - wheelLastTime;
   // don't be too frequent
-  if (elapsed < 100) return;  
+  if (elapsed < 300) return;  
   
   wheelSpeedL = wheelCounterL / elapsed * 1000;    
   wheelSpeedR = wheelCounterR / elapsed * 1000;   
-   
+ 
   wheelLPID.Compute();
   wheelRPID.Compute();
   
-  //analogWrite(PIN_WHEEL_LPWM, wheelOutputL);
-  //analogWrite(PIN_WHEEL_RPWM, wheelOutputR);
-  /*
+  analogWrite(PIN_WHEEL_LPWM, wheelOutputL);
+  analogWrite(PIN_WHEEL_RPWM, wheelOutputR);
+  //analogWrite(PIN_WHEEL_LPWM, 255);
+  //analogWrite(PIN_WHEEL_RPWM, 255);
+  
   Serial.print("LS=");
   Serial.print(wheelSpeedL);
   Serial.print("\tLO=");
@@ -95,14 +97,11 @@ void updateCurrentSpeed() {
   Serial.print(wheelOutputR);
   Serial.print("\te=");
   Serial.println(elapsed);
-*/
+
   noInterrupts(); // critical, time-sensitive code here  
-  // speed is calculated every 300ms  
-  if (elapsed >= 100) {
-    wheelCounterL = 0;
-    wheelCounterR = 0;
-    wheelLastTime = now;
-  }  
+  wheelCounterL = 0;
+  wheelCounterR = 0;
+  wheelLastTime = now;
   interrupts(); 
 }
 
@@ -140,35 +139,36 @@ void moveRobot(int dir) {
     default:
       break;      
   }
-  analogWrite(PIN_WHEEL_LPWM, wheelSetpointL);
-  analogWrite(PIN_WHEEL_RPWM, wheelSetpointR);
 }
 
 void processIRCode() {    
   unsigned long currentValue = results.value;  
-  Serial.println(currentValue, HEX);  
-  unsigned long now = millis(); 
-  if (currentValue == 0xFFFFFFFF ) {// repeat key
-    currentValue = lastIRCode;
-    Serial.print("IR repeat in " + String(now - lastIRCodeTime) + "us, the last code is:");    
-    Serial.println(lastIRCode, HEX);    
-  }
+  Serial.println(currentValue, HEX);    
   
+    
+    
+
   switch(currentValue) { 
     case 0xFF30CF: //1 
+    case 0x9716BE3F:
       break;
     case 0xFF18E7: //2
+    case 0x3D9AE3F7:
       moveRobot(ROBOT_MOVE_FORWARD);
       break;
     case 0xFF7A85: //3  
+    case 0x6182021B:
       break;
     case 0xFF10EF: //4
+    case 0x8C22657B:
       moveRobot(ROBOT_TURN_LEFT);
       break;
     case 0xFF38C7: //5
+    case 0x488F3CBB:
       moveRobot(ROBOT_STOP);
       break;
     case 0xFF5AA5: //6
+    case 0x0449E79F:
       moveRobot(ROBOT_TURN_RIGHT);
       break;
     case 0xFFA25D: Serial.println("CH-"); break;
@@ -186,30 +186,20 @@ void processIRCode() {
     case 0xFF42BD: Serial.println("7"); break;
     case 0xFF4AB5: Serial.println("8"); break;
     case 0xFF52AD: Serial.println("9"); break;
+    case 0xFFFFFF: Serial.println("repeat"); break;
     default: 
       Serial.println("Noisy signal");
-      lastIRCode = 0;
-      lastIRCodeTime = 0;    
-      return;
-  }
-  lastIRCode = currentValue;
-  lastIRCodeTime = now;
-  
+  } 
 }
 
 void loop()
-{  
-      
-  //Serial.println(results.value);  
-  
-  if (irrecv.decode(&results)) {
-    Serial.println(results.value, HEX);
+{ 
+  if (irrecv.decode(&results)) {    
     processIRCode();
     irrecv.resume();
   }
-  
-  
-  //updateCurrentSpeed();
+    
+  updateCurrentSpeed();
   
   //Serial.println(String("detector:") + digitalRead(PIN_DETECTOR_1) +":" + digitalRead(PIN_DETECTOR_2) + ":" +digitalRead(PIN_DETECTOR_3) + ":" + digitalRead(PIN_DETECTOR_4));
 }
