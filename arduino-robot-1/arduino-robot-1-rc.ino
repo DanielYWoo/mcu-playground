@@ -1,5 +1,5 @@
 /**
- * 3-wheel robot with a Uno
+ * remote control with a Nano or Pro Mini
  */
 
 void setup() {
