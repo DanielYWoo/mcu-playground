@@ -1,3 +1,8 @@
+#include <printf.h>
+#include <nRF24L01.h>
+#include <RF24_config.h>
+#include <RF24.h>
+
 /**
  * 3-wheel robot with a Uno
  * three PWM pins, two for wheel with a timer, one for servo with another timer
@@ -19,12 +24,12 @@ const int REG_WHEEL_LEFT_OUT1 = 2;
 const int REG_WHEEL_LEFT_OUT2 = 3;
 const int REG_WHEEL_RIGHT_OUT3 = 4;
 const int REG_WHEEL_RIGHT_OUT4 = 5;
-const int PIN_WHEEL_LEFT_PWM = 5
+const int PIN_WHEEL_LEFT_PWM = 5;
 const int PIN_WHEEL_RIGHT_PWM = 6;
 
 // speed, counter
 const int PIN_WHEEL_LEFT_COUNTER = 2; // must be 2/3 to use interrupt
-const int PIN_WHEEL_LEFT_COUNTER = 3; // must be 2/3 to use interrupt
+const int PIN_WHEEL_RIGHT_COUNTER = 3; // must be 2/3 to use interrupt
 
 // servo 
 const int PIN_SERVO_PWM = 9;
@@ -43,9 +48,9 @@ const int PIN_SRF05_ECHO = A1;
 
 // 4-way LED obstacle detection
 const int PIN_LED_1 = A2;
-const int PIN_LED_1 = A3;
-const int PIN_LED_1 = A4;
-const int PIN_LED_1 = A5;
+const int PIN_LED_2 = A3;
+const int PIN_LED_3 = A4;
+const int PIN_LED_4 = A5;
 
 
 
