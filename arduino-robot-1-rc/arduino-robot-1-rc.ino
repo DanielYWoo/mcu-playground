@@ -10,8 +10,8 @@
 #include <RF24_config.h>
 #include <RF24.h>
 
-const int PIN_JOYSTICK_V = A6;
-const int PIN_JOYSTICK_H = A7;
+const int PIN_JOYSTICK_V = A4;
+const int PIN_JOYSTICK_H = A5;
 
 const int PIN_1602_RS = 7;
 const int PIN_1602_EN = 6;
@@ -35,7 +35,26 @@ const int RF24_PIN_SCK = 13;
 LiquidCrystal lcd(PIN_1602_RS, PIN_1602_EN, PIN_1602_D4, PIN_1602_D5, PIN_1602_D6, PIN_1602_D7); // create an LCD object
 RF24 radio(RF24_PIN_CE, RF24_PIN_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
-unsigned long lastLcdDisplayMs = 0;
+
+const int MODE_MANUAL_PID = 0;
+const int MODE_MANUAL_NOPID = 1;
+const int MODE_AUTO_PID = 2;
+const int MODE_DANCE_PID = 3;
+
+byte runMode = 0;
+unsigned long lastControlMs = 0;
+int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
+
+int joyStickH = 0, joyStickV = 0;
+
+unsigned long lastLCDMs = 0;
+
+const int DEBUG_JOYSTICK = 0;
+const int DEBUG_PID = 1;
+const int DEBUG_4WAY_OBSTACLE_DETECTION = 2;
+const int DEBUG_ULTRA_SONIC = 3;
+const int DEBUG_RF24 = 4;
+byte debugMode = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -46,7 +65,7 @@ void setup() {
 
   lcd.begin(16, 2);
   lcd.clear();
-  lcd.print("Mode: Manual");
+  lcd.print("Booting...");
 
   radio.begin();
   radio.openWritingPipe(RF24_ADDR);
@@ -54,45 +73,102 @@ void setup() {
   radio.setDataRate(RF24_250KBPS);   //set datarate to 250kbps
   radio.setChannel(100);             //set frequency to channel 100
   radio.startListening();
+  setRunMode(MODE_MANUAL_PID);
+  debugMode = DEBUG_JOYSTICK;
 }
 
 void loop() {
+  debug();
   receiveTelemetry();
   checkJoystickButton();
-  //delay(1000);
+
   //sendCommand();
 }
 
-void checkJoystickButton() {
-  //delay(1000);
-  //int h = (analogRead(PIN_JOYSTICK_H) - 512) / 32;
-  //int v = (analogRead(PIN_JOYSTICK_V) - 512) / 32;
-  int h = analogRead(PIN_JOYSTICK_H);
-  int v = analogRead(PIN_JOYSTICK_V);
-  //lcd.setCursor(0, 0);
-  //lcd.print("                ");
-
-  if (millis() - lastLcdDisplayMs > 200) { // don't refresh debug info too frequently
-    lcd.setCursor(0, 1);
-    lcd.print("                ");
-    lcd.setCursor(0, 1);
-    lcd.print("DebugJS=");
-    lcd.print(h);
-    lcd.print(",");
-    lcd.print(v);
-    lastLcdDisplayMs = millis();
+void debug() {
+  if (millis() - lastLCDMs < 400) { //don't refresh debug info too frequently
+    return;
   }
-/*
-  Serial.print(digitalRead(PIN_BTN_1));
-  Serial.print(" ");
-  Serial.print(digitalRead(PIN_BTN_2));
-  Serial.print(" ");
-  Serial.print(digitalRead(PIN_BTN_3));
-  Serial.print(" ");
-  Serial.print(digitalRead(PIN_BTN_4));
-  Serial.println();
-*/
+  lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
+  switch (debugMode) {
+    case DEBUG_JOYSTICK:
+      lcd.print("Info Stick=");
+      lcd.print(joyStickH);
+      lcd.print(",");
+      lcd.print(joyStickV);
+      break;
+    case DEBUG_PID:
+      lcd.print("Info PID=");
+      break;
+    case DEBUG_4WAY_OBSTACLE_DETECTION:
+      lcd.print("Info 4WAY=");
+      break;
+    case DEBUG_ULTRA_SONIC:
+      lcd.print("Info Sonic=");
+      break;
+    case DEBUG_RF24:
+      lcd.print("Info RF24=");
+      break;
+    default:
+      lcd.print("ERROR");
+      break;
+  }
+
+
+  lastLCDMs = millis();
+
 }
+
+void setRunMode(int m) {
+  lcd.clear();
+//  lcd.setCursor(0, 0);
+//  lcd.print("                ");
+  switch (m) {
+    case MODE_MANUAL_PID:
+      lcd.print("Mode: Manual PID");
+      break;
+    case MODE_MANUAL_NOPID:
+      lcd.print("Mode: Manual");
+      break;
+    case MODE_AUTO_PID:
+      lcd.print("Mode: AUTO PID");
+      break;
+    case MODE_DANCE_PID:
+      lcd.print("Mode: Dance PID");
+      break;
+    default:
+      lcd.print("ERROR");
+      break;
+  }
+}
+
+void checkJoystickButton() {
+  if (millis() - lastControlMs > 50) { // debounce buttons
+    int btn1 = digitalRead(PIN_BTN_1);
+    if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
+      setRunMode(++runMode % 4);
+    }
+    lastBtn1 = btn1;
+
+    int btn2 = digitalRead(PIN_BTN_2);
+    if (lastBtn2 == HIGH && btn2 == LOW) { // avoid repeating while keeping the button pressed
+      debugMode = ++debugMode % 5;
+    }
+    lastBtn2 = btn2;
+
+    float h = (analogRead(PIN_JOYSTICK_H) - 518) * 1.25;
+    float v = (analogRead(PIN_JOYSTICK_V) - 500) * 1.9;
+    int hNoise = v * 0.18;
+    int vNoise = h * 0.75;
+    joyStickH = (int) ((h - hNoise) / 64);
+    joyStickV = (int) ((v - vNoise) / 64);
+
+    lastControlMs = millis();
+  }
+}
+
 
 void sendCommand() {
   radio.stopListening();
