@@ -2,13 +2,15 @@
    remote control with a Nano or Pro Mini
 
 */
-
+// for 1602
 #include <LiquidCrystal.h>
-
+// for rf24
 #include <printf.h>
 #include <nRF24L01.h>
 #include <RF24_config.h>
 #include <RF24.h>
+// for kalman filter
+
 
 const int PIN_JOYSTICK_V = A4;
 const int PIN_JOYSTICK_H = A5;
@@ -44,8 +46,7 @@ const int MODE_DANCE_PID = 3;
 byte runMode = 0;
 unsigned long lastControlMs = 0;
 int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
-
-int joyStickH = 0, joyStickV = 0;
+int lastJoyStickH = 0, lastJoyStickV = 0;
 
 unsigned long lastLCDMs = 0;
 
@@ -81,12 +82,11 @@ void loop() {
   debug();
   receiveTelemetry();
   checkJoystickButton();
-
   //sendCommand();
 }
 
 void debug() {
-  if (millis() - lastLCDMs < 400) { //don't refresh debug info too frequently
+  if (millis() - lastLCDMs < 500) { //don't refresh debug info too frequently
     return;
   }
   lcd.setCursor(0, 1);
@@ -94,31 +94,28 @@ void debug() {
   lcd.setCursor(0, 1);
   switch (debugMode) {
     case DEBUG_JOYSTICK:
-      lcd.print("Info Stick=");
-      lcd.print(joyStickH);
+      lcd.print("Stick=");
+      lcd.print(lastJoyStickH);
       lcd.print(",");
-      lcd.print(joyStickV);
+      lcd.print(lastJoyStickV);
       break;
     case DEBUG_PID:
-      lcd.print("Info PID=");
+      lcd.print("PID=");
       break;
     case DEBUG_4WAY_OBSTACLE_DETECTION:
-      lcd.print("Info 4WAY=");
+      lcd.print("4WAY=");
       break;
     case DEBUG_ULTRA_SONIC:
-      lcd.print("Info Sonic=");
+      lcd.print("Sonic=");
       break;
     case DEBUG_RF24:
-      lcd.print("Info RF24=");
+      lcd.print("RF24=");
       break;
     default:
       lcd.print("ERROR");
       break;
   }
-
-
   lastLCDMs = millis();
-
 }
 
 void setRunMode(int m) {
@@ -145,7 +142,7 @@ void setRunMode(int m) {
 }
 
 void checkJoystickButton() {
-  if (millis() - lastControlMs > 50) { // debounce buttons
+  if (millis() - lastControlMs > 150) { // debounce buttons
     int btn1 = digitalRead(PIN_BTN_1);
     if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
       setRunMode(++runMode % 4);
@@ -158,14 +155,21 @@ void checkJoystickButton() {
     }
     lastBtn2 = btn2;
 
-    float h = (analogRead(PIN_JOYSTICK_H) - 518) * 1.25;
-    float v = (analogRead(PIN_JOYSTICK_V) - 500) * 1.9;
-    int hNoise = v * 0.18;
-    int vNoise = h * 0.75;
-    joyStickH = (int) ((h - hNoise) / 64);
-    joyStickV = (int) ((v - vNoise) / 64);
-
+    float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
+    float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
+    
+    h = (h - 165) * 1.4925 - 498;
+    v = (v - 215) * 1.9417 - 495;
+    lastJoyStickH = (int) h;
+    lastJoyStickV = (int) v;
+    
+    int hNoise = v * 0.375;
+    int vNoise = h * 0.765;
+    lastJoyStickH = (int) ((h - hNoise) / 100);
+    lastJoyStickV = (int) ((v - vNoise) / 100);
+    // now h v ranges from -3 to 3.
     lastControlMs = millis();
+    
   }
 }
 
