@@ -1,6 +1,7 @@
 /**
-   remote control with a Nano or Pro Mini
-
+ * 
+ * remote control with a Nano or Pro Mini
+ * 
 */
 // for 1602
 #include <LiquidCrystal.h>
@@ -9,9 +10,8 @@
 #include <nRF24L01.h>
 #include <RF24_config.h>
 #include <RF24.h>
-// for kalman filter
 
-
+// -------------- Pins -----------------
 const int PIN_JOYSTICK_V = A4;
 const int PIN_JOYSTICK_H = A5;
 
@@ -34,28 +34,45 @@ const int RF24_PIN_MOSI = 11;
 const int RF24_PIN_MISO = 12;
 const int RF24_PIN_SCK = 13;
 
+// -------------- global objects -----------------
 LiquidCrystal lcd(PIN_1602_RS, PIN_1602_EN, PIN_1602_D4, PIN_1602_D5, PIN_1602_D6, PIN_1602_D7); // create an LCD object
 RF24 radio(RF24_PIN_CE, RF24_PIN_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
 
+// -------------- mode -----------------
 const int MODE_MANUAL_PID = 0;
 const int MODE_MANUAL_NOPID = 1;
 const int MODE_AUTO_PID = 2;
 const int MODE_DANCE_PID = 3;
-
 byte runMode = 0;
+
+// -------------- controls -----------------
 unsigned long lastControlMs = 0;
 int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
 int lastJoyStickH = 0, lastJoyStickV = 0;
-
 unsigned long lastLCDMs = 0;
 
+// -------------- debug -----------------
 const int DEBUG_JOYSTICK = 0;
 const int DEBUG_PID = 1;
 const int DEBUG_4WAY_OBSTACLE_DETECTION = 2;
 const int DEBUG_ULTRA_SONIC = 3;
 const int DEBUG_RF24 = 4;
 byte debugMode = 0;
+
+// ------------ communication -------------
+const char CMD_MODE_MANUAL [] = "MOM_";
+const char CMD_MODE_MANUAL_PID [] = "MOMP";
+const char CMD_MODE_AUTO [] = "MOAU";
+const char CMD_MODE_DANCE [] = "MODA";
+
+const char CMD_MOVE_FORWARD [] = "MVF_";
+const char CMD_MOVE_BACKWARD [] = "MVB_";
+const char CMD_MOVE_FORWARD_L [] = "MVFL";
+const char CMD_MOVE_FORWARD_R [] = "MVFR";
+const char CMD_MOVE_TURN_L [] = "MVTL";
+const char CMD_MOVE_TURN_R [] = "MVTR";
+
 
 void setup() {
   Serial.begin(9600);
@@ -174,7 +191,7 @@ void checkJoystickButton() {
 }
 
 
-void sendCommand() {
+void sendCommand(char* cmd) {
   radio.stopListening();
   //Serial.println("Sending command");
   const char text[] = "Hello World";
