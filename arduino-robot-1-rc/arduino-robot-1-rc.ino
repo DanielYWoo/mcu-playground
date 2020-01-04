@@ -40,39 +40,30 @@ RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
 
 // -------------- mode -----------------
-const int MODE_MANUAL_PID = 0;
-const int MODE_MANUAL_NOPID = 1;
-const int MODE_AUTO_PID = 2;
-const int MODE_DANCE_PID = 3;
-byte runMode = 0;
+const char CMD_MODE [] = "MODE";
+const byte CMD_MODE_MANUAL_PID = 0;
+const byte CMD_MODE_MANUAL_NOPID = 1;
+const byte CMD_MODE_AUTO_PID = 2;
+const byte CMD_MODE_DANCE_PID = 3;
+byte cmdRunMode = 0;
 
-// -------------- controls -----------------
-unsigned long lastControlMs = 0;
-int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
-int lastJoyStickH = 0, lastJoyStickV = 0;
-unsigned long lastLCDMs = 0;
+// -------------- move -----------------
+const char CMD_MOVE[] = "MOVE";
+byte cmdMoveH = 0;
+byte cmdMoveV = 0;
 
 // -------------- debug -----------------
-const int DEBUG_JOYSTICK = 0;
-const int DEBUG_PID = 1;
-const int DEBUG_4WAY_OBSTACLE_DETECTION = 2;
-const int DEBUG_ULTRA_SONIC = 3;
-const int DEBUG_RF24 = 4;
-byte debugMode = 0;
+const byte CMD_DEBUG_JOYSTICK = 0;
+const byte CMD_DEBUG_PID = 1;
+const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 2;
+const byte CMD_DEBUG_ULTRA_SONIC = 3;
+const byte CMD_DEBUG_RF24 = 4;
+byte cmdDebugMode = 0;
 
-// ------------ communication -------------
-const char CMD_MODE_MANUAL_NOPID [] = "MOM_";
-const char CMD_MODE_MANUAL [] = "MOMP";
-const char CMD_MODE_AUTO [] = "MOAU";
-const char CMD_MODE_DANCE [] = "MODA";
-
-const char CMD_MOVE_FORWARD [] = "MVF_";
-const char CMD_MOVE_BACKWARD [] = "MVB_";
-const char CMD_MOVE_FORWARD_L [] = "MVFL";
-const char CMD_MOVE_FORWARD_R [] = "MVFR";
-const char CMD_MOVE_TURN_L [] = "MVTL";
-const char CMD_MOVE_TURN_R [] = "MVTR";
-
+// -------------- controls vaiables -----------------
+unsigned long lastControlMs = 0;
+int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
+unsigned long lastLCDMs = 0;
 
 void setup() {
   Serial.begin(9600);
@@ -87,19 +78,18 @@ void setup() {
 
   radio.begin();
   radio.openWritingPipe(RF24_ADDR);
-  radio.setPALevel(RF24_PA_MIN);
+  radio.setPALevel(RF24_PA_LOW);
   radio.setDataRate(RF24_250KBPS);   //set datarate to 250kbps
   radio.setChannel(100);             //set frequency to channel 100
   radio.startListening();
-  setRunMode(MODE_MANUAL_PID);
-  debugMode = DEBUG_JOYSTICK;
+  setRunMode(CMD_MODE_MANUAL_PID);
+  cmdDebugMode = CMD_DEBUG_JOYSTICK;
 }
 
 void loop() {
   debug();
   receiveTelemetry();
   checkJoystickButton();
-  //sendCommand();
 }
 
 void debug() {
@@ -109,23 +99,23 @@ void debug() {
   lcd.setCursor(0, 1);
   lcd.print("                ");
   lcd.setCursor(0, 1);
-  switch (debugMode) {
-    case DEBUG_JOYSTICK:
+  switch (cmdDebugMode) {
+    case CMD_DEBUG_JOYSTICK:
       lcd.print("Stick=");
-      lcd.print(lastJoyStickH);
+      lcd.print(cmdMoveH);
       lcd.print(",");
-      lcd.print(lastJoyStickV);
+      lcd.print(cmdMoveV);
       break;
-    case DEBUG_PID:
+    case CMD_DEBUG_PID:
       lcd.print("PID=");
       break;
-    case DEBUG_4WAY_OBSTACLE_DETECTION:
+    case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       lcd.print("4WAY=");
       break;
-    case DEBUG_ULTRA_SONIC:
+    case CMD_DEBUG_ULTRA_SONIC:
       lcd.print("Sonic=");
       break;
-    case DEBUG_RF24:
+    case CMD_DEBUG_RF24:
       lcd.print("RF24=");
       break;
     default:
@@ -138,20 +128,20 @@ void debug() {
 void setRunMode(int m) {
   lcd.clear();
   switch (m) {
-    case MODE_MANUAL_PID:
-      sendCommand(CMD_MODE_MANUAL);
+    case CMD_MODE_MANUAL_PID:
+      sendCommand(CMD_MODE,  CMD_MODE_MANUAL_PID, 0);
       lcd.print("Mode: Manual PID");
       break;
-    case MODE_MANUAL_NOPID:
-      sendCommand(CMD_MODE_MANUAL_NOPID);
+    case CMD_MODE_MANUAL_NOPID:
+      sendCommand(CMD_MODE, CMD_MODE_MANUAL_NOPID, 0);
       lcd.print("Mode: Manual No PID");
       break;
-    case MODE_AUTO_PID:
-      sendCommand(CMD_MODE_AUTO);
+    case CMD_MODE_AUTO_PID:
+      sendCommand(CMD_MODE, CMD_MODE_AUTO_PID, 0);
       lcd.print("Mode: AUTO PID");
       break;
-    case MODE_DANCE_PID:
-      sendCommand(CMD_MODE_DANCE);
+    case CMD_MODE_DANCE_PID:
+      sendCommand(CMD_MODE, CMD_MODE_DANCE_PID, 0);
       lcd.print("Mode: Dance PID");
       break;
     default:
@@ -164,13 +154,13 @@ void checkJoystickButton() {
   if (millis() - lastControlMs > 150) { // debounce buttons
     int btn1 = digitalRead(PIN_BTN_1);
     if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
-      setRunMode(++runMode % 4);
+      setRunMode(++cmdRunMode % 4);
     }
     lastBtn1 = btn1;
 
     int btn2 = digitalRead(PIN_BTN_2);
     if (lastBtn2 == HIGH && btn2 == LOW) { // avoid repeating while keeping the button pressed
-      debugMode = ++debugMode % 5;
+      cmdDebugMode = ++cmdDebugMode % 5;
     }
     lastBtn2 = btn2;
 
@@ -179,25 +169,39 @@ void checkJoystickButton() {
 
     h = (h - 165) * 1.4925 - 498;
     v = (v - 215) * 1.9417 - 495;
-    lastJoyStickH = (int) h;
-    lastJoyStickV = (int) v;
 
     int hNoise = v * 0.375;
     int vNoise = h * 0.765;
-    lastJoyStickH = (int) ((h - hNoise) / 100);
-    lastJoyStickV = (int) ((v - vNoise) / 100);
+    cmdMoveH = (int) ((h - hNoise) / 100);
+    cmdMoveV = (int) ((v - vNoise) / 100);
     // now h v ranges from -3 to 3.
+    sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV);
     lastControlMs = millis();
-
   }
 }
 
-
-void sendCommand(char cmd []) {
+void sendCommand(byte * cmd1, byte param1, byte param2) {
   radio.stopListening();
-  Serial.print("Send command: ");
-  Serial.println(cmd);
-  radio.write(&cmd, sizeof(cmd));
+  byte cmd [7];
+  for (int i = 0; i < 4; i++) {
+    cmd[i] = cmd1[i];
+  }
+  cmd[4] = param1;
+  cmd[5] = param2;
+  cmd[6] = '\0';
+  // better log
+  //if (param1 != 0 && param2 != 0) {
+    Serial.print("Send command: ");
+    for (int i = 0; i < 4; i++) {
+      Serial.print((char) cmd[i]);
+    }
+    Serial.print(':');
+    Serial.print((byte) cmd[4]);
+    Serial.print(':');
+    Serial.print((byte) cmd[5]);
+    Serial.println();
+  //}
+  radio.write(cmd, 7); // fixed 4 bytes command, 2 bytes params, with a zero ending
   radio.startListening();
 }
 
