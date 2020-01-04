@@ -13,6 +13,7 @@
 const int PIN_OUT_DS = 0;
 const int PIN_OUT_SHCP = 1;
 const int PIN_OUT_STCP = 4;
+byte hc595Bits = 0;
 
 // mouth and heart
 // 2 pins of 595 chip for the OLED screen
@@ -77,10 +78,17 @@ const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 2;
 const byte CMD_DEBUG_ULTRA_SONIC = 3;
 const byte CMD_DEBUG_RF24 = 4;
 byte cmdDebugMode = 0;
+unsigned long lastDebugMs = 0;
 
 
 void setup() {
   Serial.begin(9600);
+  pinMode(PIN_OUT_DS, OUTPUT);
+  pinMode(PIN_OUT_SHCP, OUTPUT);
+  pinMode(PIN_OUT_STCP, OUTPUT);
+  pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
+  pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+
   radio.begin();
   radio.openReadingPipe(0, RF24_ADDR);
   radio.setPALevel(RF24_PA_LOW);
@@ -93,6 +101,10 @@ void setup() {
 void loop()
 {
   receiveCommand();
+  cmdMoveH = 0;
+  cmdMoveV = 3;
+
+  drive();
 
 }
 
@@ -127,7 +139,6 @@ void sendTelemetry() {
   //radio.startListening();
 }
 
-
 void setRunMode(int m) {
   switch (m) {
     case CMD_MODE_MANUAL_PID:
@@ -148,9 +159,46 @@ void setRunMode(int m) {
   }
 }
 
-void setMove(int h, int v) {
+void setMove(byte h, byte v) {
+  cmdMoveH = h;
+  cmdMoveV = v;
+  Serial.print("H");
+  Serial.print(h);
+  Serial.print("V");
+  Serial.println(v);
+}
 
+void drive() {
+  if (cmdMoveH == 1) { // left
+    analogWrite(PIN_WHEEL_LEFT_PWM, 100);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+  } else if (cmdMoveH == 3) { // right
+    analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 100);
+  } else {
+    analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+  }
+  if (cmdMoveV == 1) { // backward
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 1);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 1);
+    output595Bits();
+  } else if (cmdMoveV == 3) { // forward
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 1);
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 1);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
+    output595Bits();
+  } else { // brake
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
+    output595Bits();
 
+  }
 }
 
 bool matchCmd (const byte *p1, const byte *p2)
@@ -161,4 +209,15 @@ bool matchCmd (const byte *p1, const byte *p2)
     }
   }
   return true;
+}
+
+void output595Bits() {
+  
+  if (millis() - lastDebugMs < 1000) return;
+  lastDebugMs = millis();
+  digitalWrite(PIN_OUT_STCP, LOW);
+  Serial.print("bits");
+  Serial.println(hc595Bits, BIN);
+  shiftOut(PIN_OUT_DS, PIN_OUT_STCP, LSBFIRST, hc595Bits);
+  digitalWrite(PIN_OUT_STCP, HIGH);
 }
