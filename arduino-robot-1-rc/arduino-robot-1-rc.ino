@@ -1,7 +1,7 @@
 /**
- * 
- * remote control with a Nano or Pro Mini
- * 
+
+   remote control with a Nano or Pro Mini
+
 */
 // for 1602
 #include <LiquidCrystal.h>
@@ -27,16 +27,16 @@ const int PIN_1602_D5 = A2;
 const int PIN_1602_D6 = A1;
 const int PIN_1602_D7 = A0;
 
-const int RF24_PIN_IRQ = 8;
-const int RF24_PIN_CE = 9;
-const int RF24_PIN_CSN = 10;
-const int RF24_PIN_MOSI = 11;
-const int RF24_PIN_MISO = 12;
-const int RF24_PIN_SCK = 13;
+const int PIN_RF24_IRQ = 8;
+const int PIN_RF24_CE = 9;
+const int PIN_RF24_CSN = 10;
+const int PIN_RF24_MOSI = 11;
+const int PIN_RF24_MISO = 12;
+const int PIN_RF24_SCK = 13;
 
 // -------------- global objects -----------------
 LiquidCrystal lcd(PIN_1602_RS, PIN_1602_EN, PIN_1602_D4, PIN_1602_D5, PIN_1602_D6, PIN_1602_D7); // create an LCD object
-RF24 radio(RF24_PIN_CE, RF24_PIN_CSN); // create a radio object
+RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
 
 // -------------- mode -----------------
@@ -61,8 +61,8 @@ const int DEBUG_RF24 = 4;
 byte debugMode = 0;
 
 // ------------ communication -------------
-const char CMD_MODE_MANUAL [] = "MOM_";
-const char CMD_MODE_MANUAL_PID [] = "MOMP";
+const char CMD_MODE_MANUAL_NOPID [] = "MOM_";
+const char CMD_MODE_MANUAL [] = "MOMP";
 const char CMD_MODE_AUTO [] = "MOAU";
 const char CMD_MODE_DANCE [] = "MODA";
 
@@ -137,19 +137,21 @@ void debug() {
 
 void setRunMode(int m) {
   lcd.clear();
-//  lcd.setCursor(0, 0);
-//  lcd.print("                ");
   switch (m) {
     case MODE_MANUAL_PID:
+      sendCommand(CMD_MODE_MANUAL);
       lcd.print("Mode: Manual PID");
       break;
     case MODE_MANUAL_NOPID:
-      lcd.print("Mode: Manual");
+      sendCommand(CMD_MODE_MANUAL_NOPID);
+      lcd.print("Mode: Manual No PID");
       break;
     case MODE_AUTO_PID:
+      sendCommand(CMD_MODE_AUTO);
       lcd.print("Mode: AUTO PID");
       break;
     case MODE_DANCE_PID:
+      sendCommand(CMD_MODE_DANCE);
       lcd.print("Mode: Dance PID");
       break;
     default:
@@ -174,29 +176,28 @@ void checkJoystickButton() {
 
     float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
     float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
-    
+
     h = (h - 165) * 1.4925 - 498;
     v = (v - 215) * 1.9417 - 495;
     lastJoyStickH = (int) h;
     lastJoyStickV = (int) v;
-    
+
     int hNoise = v * 0.375;
     int vNoise = h * 0.765;
     lastJoyStickH = (int) ((h - hNoise) / 100);
     lastJoyStickV = (int) ((v - vNoise) / 100);
     // now h v ranges from -3 to 3.
     lastControlMs = millis();
-    
+
   }
 }
 
 
-void sendCommand(char* cmd) {
+void sendCommand(char cmd []) {
   radio.stopListening();
-  //Serial.println("Sending command");
-  const char text[] = "Hello World";
-  radio.write(&text, sizeof(text));
-  Serial.println("Sent");
+  Serial.print("Send command: ");
+  Serial.println(cmd);
+  radio.write(&cmd, sizeof(cmd));
   radio.startListening();
 }
 
