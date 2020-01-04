@@ -79,10 +79,11 @@ const byte CMD_DEBUG_ULTRA_SONIC = 3;
 const byte CMD_DEBUG_RF24 = 4;
 byte cmdDebugMode = 0;
 unsigned long lastDebugMs = 0;
+bool enableSerial = false; // at runtime, must set to false to avoid Serial interfere
 
 
 void setup() {
-  Serial.begin(9600);
+  if (enableSerial) Serial.begin(9600);
   pinMode(PIN_OUT_DS, OUTPUT);
   pinMode(PIN_OUT_SHCP, OUTPUT);
   pinMode(PIN_OUT_STCP, OUTPUT);
@@ -114,19 +115,19 @@ void receiveCommand() {
   }
   const char cmd[32];
   radio.read(&cmd, sizeof(cmd));
-  Serial.print("Received command:");
-  for (int i = 0; i < 32; i++)  {
-    Serial.print((unsigned byte) cmd[i]);
-    Serial.print(' ');
-  }
-  Serial.println("|");
+  if (enableSerial) {
+    Serial.print("Received command:");
 
+    for (int i = 0; i < 32; i++)  {
+      Serial.print((unsigned byte) cmd[i]);
+      Serial.print(' ');
+    }
+    Serial.println("|");
+  }
   if (matchCmd(cmd, CMD_MODE)) { // run mode
     setRunMode(cmd[4]);
   } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move
     setMove(cmd[4], cmd[5]);
-  } else {
-    Serial.println("unknown command");
   }
 
 }
@@ -142,19 +143,19 @@ void sendTelemetry() {
 void setRunMode(int m) {
   switch (m) {
     case CMD_MODE_MANUAL_PID:
-      Serial.println("Mode: Manual PID");
+      if (enableSerial) Serial.println("Mode: Manual PID");
       break;
     case CMD_MODE_MANUAL_NOPID:
-      Serial.println("Mode: Manual No PID");
+      if (enableSerial) Serial.println("Mode: Manual No PID");
       break;
     case CMD_MODE_AUTO_PID:
-      Serial.println("Mode: Auto PID");
+      if (enableSerial) Serial.println("Mode: Auto PID");
       break;
     case CMD_MODE_DANCE_PID:
-      Serial.println("Mode: Dance PID");
+      if (enableSerial) Serial.println("Mode: Dance PID");
       break;
     default:
-      Serial.println("ERROR");
+      if (enableSerial) Serial.println("ERROR");
       break;
   }
 }
@@ -162,10 +163,12 @@ void setRunMode(int m) {
 void setMove(byte h, byte v) {
   cmdMoveH = h;
   cmdMoveV = v;
-  Serial.print("H");
-  Serial.print(h);
-  Serial.print("V");
-  Serial.println(v);
+  if (enableSerial) {
+    Serial.print("H");
+    Serial.print(h);
+    Serial.print("V");
+    Serial.println(v);
+  }
 }
 
 void drive() {
@@ -212,12 +215,14 @@ bool matchCmd (const byte *p1, const byte *p2)
 }
 
 void output595Bits() {
-  
+
   if (millis() - lastDebugMs < 1000) return;
   lastDebugMs = millis();
   digitalWrite(PIN_OUT_STCP, LOW);
-  Serial.print("bits");
-  Serial.println(hc595Bits, BIN);
+  if (enableSerial) {
+    Serial.print("bits");
+    Serial.println(hc595Bits, BIN);
+  }
   shiftOut(PIN_OUT_DS, PIN_OUT_STCP, LSBFIRST, hc595Bits);
   digitalWrite(PIN_OUT_STCP, HIGH);
 }
