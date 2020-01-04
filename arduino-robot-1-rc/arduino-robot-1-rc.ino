@@ -102,9 +102,9 @@ void debug() {
   switch (cmdDebugMode) {
     case CMD_DEBUG_JOYSTICK:
       lcd.print("Stick=");
-      lcd.print(cmdMoveH);
+      lcd.print((int) cmdMoveH);
       lcd.print(",");
-      lcd.print(cmdMoveV);
+      lcd.print((int) cmdMoveV);
       break;
     case CMD_DEBUG_PID:
       lcd.print("PID=");
@@ -172,9 +172,23 @@ void checkJoystickButton() {
 
     int hNoise = v * 0.375;
     int vNoise = h * 0.765;
-    cmdMoveH = (int) ((h - hNoise) / 100);
-    cmdMoveV = (int) ((v - vNoise) / 100);
+    h = (int) ((h - hNoise) / 100);
+    v = (int) ((v - vNoise) / 100);
     // now h v ranges from -3 to 3.
+    if (h < 0) {
+      cmdMoveH = 1;
+    } else if (h > 0) {
+      cmdMoveH = 3;
+    } else {
+      cmdMoveH = 2;
+    }
+    if (v < 0) {
+      cmdMoveV = 1;
+    } else if (v > 0) {
+      cmdMoveV = 3;
+    } else {
+      cmdMoveV = 2;
+    }    
     sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV);
     lastControlMs = millis();
   }
