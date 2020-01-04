@@ -4,10 +4,10 @@
 #include <RF24.h>
 
 /**
- * 3-wheel robot with a Uno
- * three PWM pins, two for wheel with a timer, one for servo with another timer
- * a 74HC595 is used for more outputs
- */
+   3-wheel robot with a Uno
+   three PWM pins, two for wheel with a timer, one for servo with another timer
+   a 74HC595 is used for more outputs
+*/
 
 // 74HC595
 const int PIN_OUT_DS = 0;
@@ -31,7 +31,7 @@ const int PIN_WHEEL_RIGHT_PWM = 6;
 const int PIN_WHEEL_LEFT_COUNTER = 2; // must be 2/3 to use interrupt
 const int PIN_WHEEL_RIGHT_COUNTER = 3; // must be 2/3 to use interrupt
 
-// servo 
+// servo
 const int PIN_SERVO_PWM = 9;
 
 // RF2.4G wireless
@@ -56,65 +56,109 @@ const int PIN_LED_4 = A5;
 RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
 
+
 // -------------- mode -----------------
-const int MODE_MANUAL_PID = 0;
-const int MODE_MANUAL_NOPID = 1;
-const int MODE_AUTO_PID = 2;
-const int MODE_DANCE_PID = 3;
-byte runMode = 0;
+const char CMD_MODE [] = "MODE";
+const byte CMD_MODE_MANUAL_PID = 0;
+const byte CMD_MODE_MANUAL_NOPID = 1;
+const byte CMD_MODE_AUTO_PID = 2;
+const byte CMD_MODE_DANCE_PID = 3;
+byte cmdRunMode = 0;
+
+// -------------- move -----------------
+const char CMD_MOVE[] = "MOVE";
+byte cmdMoveH = 0;
+byte cmdMoveV = 0;
+
+// -------------- debug -----------------
+const byte CMD_DEBUG_JOYSTICK = 0;
+const byte CMD_DEBUG_PID = 1;
+const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 2;
+const byte CMD_DEBUG_ULTRA_SONIC = 3;
+const byte CMD_DEBUG_RF24 = 4;
+byte cmdDebugMode = 0;
 
 
 void setup() {
   Serial.begin(9600);
   radio.begin();
-  radio.openWritingPipe(RF24_ADDR);
-  radio.setPALevel(RF24_PA_MIN);
+  radio.openReadingPipe(0, RF24_ADDR);
+  radio.setPALevel(RF24_PA_LOW);
   radio.setDataRate(RF24_250KBPS);   //set datarate to 250kbps
   radio.setChannel(100);             //set frequency to channel 100
   radio.startListening();
-  setRunMode(MODE_MANUAL_PID);
+  setRunMode(CMD_MODE_MANUAL_PID);
 }
 
 void loop()
-{ 
+{
   receiveCommand();
 
 }
 
 void receiveCommand() {
-  if (radio.available()) {
-    const char text[32];
-    radio.read(&text, sizeof(text));
-    Serial.print("Received command:");
-    Serial.println(text);
+  if (!radio.available()) {
+    return;
   }
+  const char cmd[32];
+  radio.read(&cmd, sizeof(cmd));
+  Serial.print("Received command:");
+  for (int i = 0; i < 32; i++)  {
+    Serial.print((unsigned byte) cmd[i]);
+    Serial.print(' ');
+  }
+  Serial.println("|");
+
+  if (matchCmd(cmd, CMD_MODE)) { // run mode
+    setRunMode(cmd[4]);
+  } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move
+    setMove(cmd[4], cmd[5]);
+  } else {
+    Serial.println("unknown command");
+  }
+
 }
 
 void sendTelemetry() {
-  radio.stopListening();
-  Serial.print("Send telemetry: ");
+  //radio.stopListening();
+  //Serial.print("Send telemetry: ");
   //Serial.println(cmd);
   //radio.write(&cmd, sizeof(cmd));
-  radio.startListening();
+  //radio.startListening();
 }
 
 
-void setRunMode(int m) { 
+void setRunMode(int m) {
   switch (m) {
-    case MODE_MANUAL_PID:
-      Serial.println("Mode: Manual PID");      
+    case CMD_MODE_MANUAL_PID:
+      Serial.println("Mode: Manual PID");
       break;
-    case MODE_MANUAL_NOPID:      
+    case CMD_MODE_MANUAL_NOPID:
       Serial.println("Mode: Manual No PID");
       break;
-    case MODE_AUTO_PID:
-      Serial.println("Mode: AUTO PID");
+    case CMD_MODE_AUTO_PID:
+      Serial.println("Mode: Auto PID");
       break;
-    case MODE_DANCE_PID:
+    case CMD_MODE_DANCE_PID:
       Serial.println("Mode: Dance PID");
       break;
     default:
       Serial.println("ERROR");
       break;
   }
+}
+
+void setMove(int h, int v) {
+
+
+}
+
+bool matchCmd (const byte *p1, const byte *p2)
+{
+  for (int i = 0; i < 4; i++) {
+    if (* p1++ != * p2++) {
+      return false;
+    }
+  }
+  return true;
 }
