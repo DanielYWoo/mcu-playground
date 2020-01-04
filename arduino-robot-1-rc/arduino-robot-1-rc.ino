@@ -52,19 +52,24 @@ const char CMD_MOVE[] = "MOVE";
 byte cmdMoveH = 0;
 byte cmdMoveV = 0;
 
+// -------------- horn -----------------
+const char CMD_HORN[] = "HORN";
+
 // -------------- debug -----------------
+const byte CMD_DEBUG [] = "DBUG";
 const byte CMD_DEBUG_JOYSTICK = 0;
-const byte CMD_DEBUG_PID = 1;
-const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 2;
-const byte CMD_DEBUG_ULTRA_SONIC = 3;
-const byte CMD_DEBUG_RF24 = 4;
+const byte CMD_DEBUG_WHEEL_COUNTER = 1;
+const byte CMD_DEBUG_PID = 2;
+const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 3;
+const byte CMD_DEBUG_ULTRA_SONIC = 4;
+const byte CMD_DEBUG_RF24 = 5;
 byte cmdDebugMode = 0;
 
 // -------------- controls vaiables -----------------
 unsigned long lastControlMs = 0;
 int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
 unsigned long lastLCDMs = 0;
-bool enableSerial = false;
+bool enableSerial = true;
 
 void setup() {
   if (enableSerial) Serial.begin(9600);
@@ -88,18 +93,41 @@ void setup() {
 }
 
 void loop() {
-  debug();
+  refreshDisplay();
   receiveTelemetry();
   checkJoystickButton();
 }
 
-void debug() {
+void refreshDisplay() {
   if (millis() - lastLCDMs < 200) { //don't refresh debug info too frequently
     return;
   }
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  //lcd.print("                ");
+  //lcd.setCursor(0, 0);
+  switch (cmdRunMode) {
+    case CMD_MODE_MANUAL_PID:
+      lcd.print("M: Manual PID");
+      break;
+    case CMD_MODE_MANUAL_NOPID:
+      lcd.print("M: Manual No PID");
+      break;
+    case CMD_MODE_AUTO_PID:
+      lcd.print("M: Auto PID");
+      break;
+    case CMD_MODE_DANCE_PID:
+      lcd.print("M: Dance PID");
+      break;
+    default:
+      lcd.print("M: ERROR");
+      lcd.print(cmdRunMode);
+      break;
+  }
+
   lcd.setCursor(0, 1);
-  lcd.print("                ");
-  lcd.setCursor(0, 1);
+  //lcd.print("                ");
+  //lcd.setCursor(0, 1);
   switch (cmdDebugMode) {
     case CMD_DEBUG_JOYSTICK:
       lcd.print("D: Stick=");
@@ -109,6 +137,9 @@ void debug() {
       break;
     case CMD_DEBUG_PID:
       lcd.print("D: PID=");
+      break;
+    case CMD_DEBUG_WHEEL_COUNTER:
+      lcd.print("D: Wheel=");
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       lcd.print("D: 4WAY=");
@@ -127,43 +158,70 @@ void debug() {
 }
 
 void setRunMode(int m) {
-  lcd.clear();
   switch (m) {
     case CMD_MODE_MANUAL_PID:
       sendCommand(CMD_MODE,  CMD_MODE_MANUAL_PID, 0);
-      lcd.print("M: Manual PID");
       break;
     case CMD_MODE_MANUAL_NOPID:
       sendCommand(CMD_MODE, CMD_MODE_MANUAL_NOPID, 0);
-      lcd.print("M: Manual No PID");
       break;
     case CMD_MODE_AUTO_PID:
       sendCommand(CMD_MODE, CMD_MODE_AUTO_PID, 0);
-      lcd.print("M: Auto PID");
       break;
     case CMD_MODE_DANCE_PID:
       sendCommand(CMD_MODE, CMD_MODE_DANCE_PID, 0);
-      lcd.print("M: Dance PID");
       break;
     default:
-      lcd.print("M: ERROR");
-      break;
+      return;
   }
+  cmdRunMode = m;
+}
+
+void setDebugMode(int m) {
+  switch (m) {
+    case CMD_DEBUG_JOYSTICK:
+      sendCommand(CMD_DEBUG,  CMD_DEBUG_JOYSTICK, 0);
+      break;
+    case CMD_DEBUG_WHEEL_COUNTER:
+      sendCommand(CMD_DEBUG,  CMD_DEBUG_WHEEL_COUNTER, 0);
+      break;
+    case CMD_DEBUG_PID:
+      sendCommand(CMD_DEBUG, CMD_DEBUG_PID, 0);
+      break;
+    case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
+      sendCommand(CMD_DEBUG, CMD_DEBUG_4WAY_OBSTACLE_DETECTION, 0);
+      break;
+    case CMD_DEBUG_ULTRA_SONIC:
+      sendCommand(CMD_DEBUG, CMD_DEBUG_ULTRA_SONIC, 0);
+      break;
+    case CMD_DEBUG_RF24:
+      sendCommand(CMD_DEBUG, CMD_DEBUG_RF24, 0);
+      break;
+    default:
+      return;
+  }
+  cmdDebugMode = m;
 }
 
 void checkJoystickButton() {
   if (millis() - lastControlMs > 20) { // debounce buttons
     int btn1 = digitalRead(PIN_BTN_1);
     if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
-      setRunMode(++cmdRunMode % 4);
+      setRunMode(((int) cmdRunMode + 1) % 4);
     }
     lastBtn1 = btn1;
 
     int btn2 = digitalRead(PIN_BTN_2);
     if (lastBtn2 == HIGH && btn2 == LOW) { // avoid repeating while keeping the button pressed
-      cmdDebugMode = ++cmdDebugMode % 5;
+      setDebugMode(((int) cmdDebugMode + 1) % 6);
     }
     lastBtn2 = btn2;
+
+    int btn3 = digitalRead(PIN_BTN_3);
+    if (lastBtn3 == HIGH && btn3 == LOW) { // avoid repeating while keeping the button pressed
+      sendCommand(CMD_HORN, 0, 0);
+    }
+    lastBtn3 = btn3;
 
     float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
     float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
@@ -190,7 +248,7 @@ void checkJoystickButton() {
     } else {
       cmdMoveV = 2;
     }
-    sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV);
+    sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV); // this is a speical continuous message
     lastControlMs = millis();
   }
 }
@@ -205,7 +263,7 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
   cmd[5] = param2;
   cmd[6] = '\0';
   // better log
-  if (enableSerial) {
+  if (enableSerial && !(cmd[0] == 'M' && cmd[1] == 'O' && cmd[2] == 'V' && cmd[3] == 'E')) {
     Serial.print("Send command: ");
     for (int i = 0; i < 4; i++) {
       Serial.print((char) cmd[i]);
@@ -228,5 +286,6 @@ void receiveTelemetry() {
       Serial.print("Received telemetry data:");
       Serial.println(text);
     }
+    
   }
 }
