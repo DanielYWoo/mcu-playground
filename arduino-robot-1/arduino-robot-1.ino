@@ -53,6 +53,9 @@ const int PIN_LED_2 = A3;
 const int PIN_LED_3 = A4;
 const int PIN_LED_4 = A5;
 
+// horn
+const int REG_HORN_OUT = 1;
+
 
 RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
 const byte RF24_ADDR[6] = "00001";
@@ -70,16 +73,29 @@ byte cmdRunMode = 0;
 const char CMD_MOVE[] = "MOVE";
 byte cmdMoveH = 0;
 byte cmdMoveV = 0;
+int countWheelL = 0;
+int countWheelR = 0;
+
+// -------------- horn -----------------
+const char CMD_HORN[] = "HORN";
+unsigned long lastHornMs = 0;
 
 // -------------- debug -----------------
+const byte CMD_DEBUG [] = "DBUG";
 const byte CMD_DEBUG_JOYSTICK = 0;
-const byte CMD_DEBUG_PID = 1;
-const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 2;
-const byte CMD_DEBUG_ULTRA_SONIC = 3;
-const byte CMD_DEBUG_RF24 = 4;
+const byte CMD_DEBUG_WHEEL_COUNTER = 1;
+const byte CMD_DEBUG_PID = 2;
+const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 3;
+const byte CMD_DEBUG_ULTRA_SONIC = 4;
+const byte CMD_DEBUG_RF24 = 5;
 byte cmdDebugMode = 0;
-unsigned long lastDebugMs = 0;
-bool enableSerial = false; // at runtime, must set to false to avoid Serial interfere
+
+// ------------- telemetry ----------------
+const byte CMD_TELE [] = "TELE";
+
+
+bool enableSerial = true; // at runtime, must set to false to avoid Serial interfere
+//long lastBuzzerMs = 0;
 
 
 void setup() {
@@ -89,6 +105,10 @@ void setup() {
   pinMode(PIN_OUT_STCP, OUTPUT);
   pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
   pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+
+  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_LEFT_COUNTER), countWheelLeft, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_RIGHT_COUNTER), countWheelRight, CHANGE);
+
 
   radio.begin();
   radio.openReadingPipe(0, RF24_ADDR);
@@ -102,11 +122,17 @@ void setup() {
 void loop()
 {
   receiveCommand();
-  cmdMoveH = 0;
-  cmdMoveV = 3;
 
   drive();
 
+}
+
+void countWheelLeft() {
+  countWheelL++;
+}
+
+void countWheelRight() {
+  countWheelR++;
 }
 
 void receiveCommand() {
@@ -115,29 +141,72 @@ void receiveCommand() {
   }
   const char cmd[32];
   radio.read(&cmd, sizeof(cmd));
-  if (enableSerial) {
+  if (enableSerial && !(cmd[0] == 'M' && cmd[1] == 'O' && cmd[2] == 'V' && cmd[3] == 'E')) {
     Serial.print("Received command:");
-
     for (int i = 0; i < 32; i++)  {
       Serial.print((unsigned byte) cmd[i]);
       Serial.print(' ');
     }
     Serial.println("|");
   }
-  if (matchCmd(cmd, CMD_MODE)) { // run mode
+  if (matchCmd(cmd, CMD_MODE)) { // change run mode
     setRunMode(cmd[4]);
   } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move
     setMove(cmd[4], cmd[5]);
+  } else if (matchCmd(cmd, CMD_DEBUG)) {
+    setDebugMode(cmd[4]);
+  } else if (matchCmd(cmd, CMD_HORN)) {
+    setHorn();
   }
 
 }
 
 void sendTelemetry() {
-  //radio.stopListening();
-  //Serial.print("Send telemetry: ");
-  //Serial.println(cmd);
-  //radio.write(&cmd, sizeof(cmd));
-  //radio.startListening();
+  switch (cmdDebugMode) {
+    case CMD_DEBUG_PID:
+
+      break;
+    case CMD_DEBUG_WHEEL_COUNTER:
+      sendCommand(CMD_TELE, countWheelL, countWheelR); // don't exceed 255
+      break;
+    case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
+      break;
+    case CMD_DEBUG_ULTRA_SONIC:
+
+      break;
+    case CMD_DEBUG_RF24:
+
+      break;
+    default:
+      return;
+  }
+
+
+}
+
+void sendCommand(byte * cmd1, byte param1, byte param2) {
+  radio.stopListening();
+  byte cmd [7];
+  for (int i = 0; i < 4; i++) {
+    cmd[i] = cmd1[i];
+  }
+  cmd[4] = param1;
+  cmd[5] = param2;
+  cmd[6] = '\0';
+  // better log
+  if (enableSerial) {
+    Serial.print("Send command: ");
+    for (int i = 0; i < 4; i++) {
+      Serial.print((char) cmd[i]);
+    }
+    Serial.print(':');
+    Serial.print((byte) cmd[4]);
+    Serial.print(':');
+    Serial.print((byte) cmd[5]);
+    Serial.println();
+  }
+  radio.write(cmd, 7); // fixed 4 bytes command, 2 bytes params, with a zero ending
+  radio.startListening();
 }
 
 void setRunMode(int m) {
@@ -156,8 +225,9 @@ void setRunMode(int m) {
       break;
     default:
       if (enableSerial) Serial.println("ERROR");
-      break;
+      return;
   }
+  cmdRunMode = m;
 }
 
 void setMove(byte h, byte v) {
@@ -171,37 +241,74 @@ void setMove(byte h, byte v) {
   }
 }
 
+void setHorn() {
+  lastHornMs = millis();
+  if (enableSerial) Serial.println("Horn");
+}
+
+void setDebugMode(int m) {
+  switch (m) {
+    case CMD_DEBUG_JOYSTICK:
+      if (enableSerial) Serial.println("Debug: Joystick");
+      break;
+    case CMD_DEBUG_WHEEL_COUNTER:
+      if (enableSerial) Serial.println("Debug: Wheel Counter");
+      break;
+    case CMD_DEBUG_PID:
+      if (enableSerial) Serial.println("Debug: PID");
+      break;
+    case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
+      if (enableSerial) Serial.println("Debug: 4Way");
+      break;
+    case CMD_DEBUG_ULTRA_SONIC:
+      if (enableSerial) Serial.println("Debug: Ultra Sonic");
+      break;
+    case CMD_DEBUG_RF24:
+      if (enableSerial) Serial.println("Debug: RF24");
+      break;
+    default:
+      if (enableSerial) Serial.println("ERROR");
+      return;
+  }
+  cmdDebugMode = m;
+}
+
 void drive() {
   if (cmdMoveH == 1) { // left
     analogWrite(PIN_WHEEL_LEFT_PWM, 100);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 230);
   } else if (cmdMoveH == 3) { // right
-    analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+    analogWrite(PIN_WHEEL_LEFT_PWM, 230);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 100);
   } else {
-    analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+    analogWrite(PIN_WHEEL_LEFT_PWM, 230);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
   }
+
   if (cmdMoveV == 1) { // backward
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 1);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 1);
-    output595Bits();
-  } else if (cmdMoveV == 3) { // forward
     bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 1);
     bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
     bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 1);
     bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
-    output595Bits();
+  } else if (cmdMoveV == 3) { // forward
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
+    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 1);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
+    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 1);
   } else { // brake
     bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
     bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
     bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
     bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
-    output595Bits();
-
   }
+  
+  if (millis() - lastHornMs < 500) {
+    bitWrite(hc595Bits, REG_HORN_OUT, 1);
+  } else {
+    bitWrite(hc595Bits, REG_HORN_OUT, 0);
+  }
+  
+  output595Bits();
 }
 
 bool matchCmd (const byte *p1, const byte *p2)
@@ -215,14 +322,11 @@ bool matchCmd (const byte *p1, const byte *p2)
 }
 
 void output595Bits() {
-
-  if (millis() - lastDebugMs < 1000) return;
-  lastDebugMs = millis();
   digitalWrite(PIN_OUT_STCP, LOW);
   if (enableSerial) {
     Serial.print("bits");
     Serial.println(hc595Bits, BIN);
   }
-  shiftOut(PIN_OUT_DS, PIN_OUT_STCP, LSBFIRST, hc595Bits);
+  shiftOut(PIN_OUT_DS, PIN_OUT_SHCP, LSBFIRST, hc595Bits);
   digitalWrite(PIN_OUT_STCP, HIGH);
 }
