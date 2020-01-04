@@ -64,9 +64,10 @@ byte cmdDebugMode = 0;
 unsigned long lastControlMs = 0;
 int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
 unsigned long lastLCDMs = 0;
+bool enableSerial = false;
 
 void setup() {
-  Serial.begin(9600);
+  if (enableSerial) Serial.begin(9600);
   pinMode(PIN_BTN_1, INPUT_PULLUP);
   pinMode(PIN_BTN_2, INPUT_PULLUP);
   pinMode(PIN_BTN_3, INPUT_PULLUP);
@@ -93,7 +94,7 @@ void loop() {
 }
 
 void debug() {
-  if (millis() - lastLCDMs < 500) { //don't refresh debug info too frequently
+  if (millis() - lastLCDMs < 200) { //don't refresh debug info too frequently
     return;
   }
   lcd.setCursor(0, 1);
@@ -101,25 +102,25 @@ void debug() {
   lcd.setCursor(0, 1);
   switch (cmdDebugMode) {
     case CMD_DEBUG_JOYSTICK:
-      lcd.print("Stick=");
+      lcd.print("D: Stick=");
       lcd.print((int) cmdMoveH);
       lcd.print(",");
       lcd.print((int) cmdMoveV);
       break;
     case CMD_DEBUG_PID:
-      lcd.print("PID=");
+      lcd.print("D: PID=");
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
-      lcd.print("4WAY=");
+      lcd.print("D: 4WAY=");
       break;
     case CMD_DEBUG_ULTRA_SONIC:
-      lcd.print("Sonic=");
+      lcd.print("D: Sonic=");
       break;
     case CMD_DEBUG_RF24:
-      lcd.print("RF24=");
+      lcd.print("D: RF24=");
       break;
     default:
-      lcd.print("ERROR");
+      lcd.print("D: ERROR");
       break;
   }
   lastLCDMs = millis();
@@ -130,28 +131,28 @@ void setRunMode(int m) {
   switch (m) {
     case CMD_MODE_MANUAL_PID:
       sendCommand(CMD_MODE,  CMD_MODE_MANUAL_PID, 0);
-      lcd.print("Mode: Manual PID");
+      lcd.print("M: Manual PID");
       break;
     case CMD_MODE_MANUAL_NOPID:
       sendCommand(CMD_MODE, CMD_MODE_MANUAL_NOPID, 0);
-      lcd.print("Mode: Manual No PID");
+      lcd.print("M: Manual No PID");
       break;
     case CMD_MODE_AUTO_PID:
       sendCommand(CMD_MODE, CMD_MODE_AUTO_PID, 0);
-      lcd.print("Mode: AUTO PID");
+      lcd.print("M: Auto PID");
       break;
     case CMD_MODE_DANCE_PID:
       sendCommand(CMD_MODE, CMD_MODE_DANCE_PID, 0);
-      lcd.print("Mode: Dance PID");
+      lcd.print("M: Dance PID");
       break;
     default:
-      lcd.print("ERROR");
+      lcd.print("M: ERROR");
       break;
   }
 }
 
 void checkJoystickButton() {
-  if (millis() - lastControlMs > 150) { // debounce buttons
+  if (millis() - lastControlMs > 20) { // debounce buttons
     int btn1 = digitalRead(PIN_BTN_1);
     if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
       setRunMode(++cmdRunMode % 4);
@@ -188,7 +189,7 @@ void checkJoystickButton() {
       cmdMoveV = 3;
     } else {
       cmdMoveV = 2;
-    }    
+    }
     sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV);
     lastControlMs = millis();
   }
@@ -204,7 +205,7 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
   cmd[5] = param2;
   cmd[6] = '\0';
   // better log
-  //if (param1 != 0 && param2 != 0) {
+  if (enableSerial) {
     Serial.print("Send command: ");
     for (int i = 0; i < 4; i++) {
       Serial.print((char) cmd[i]);
@@ -214,7 +215,7 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
     Serial.print(':');
     Serial.print((byte) cmd[5]);
     Serial.println();
-  //}
+  }
   radio.write(cmd, 7); // fixed 4 bytes command, 2 bytes params, with a zero ending
   radio.startListening();
 }
@@ -223,7 +224,9 @@ void receiveTelemetry() {
   if (radio.available()) {
     const char text[32];
     radio.read(&text, sizeof(text));
-    Serial.print("Received telemetry data:");
-    Serial.println(text);
+    if (enableSerial) {
+      Serial.print("Received telemetry data:");
+      Serial.println(text);
+    }
   }
 }
