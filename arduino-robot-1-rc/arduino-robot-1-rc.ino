@@ -37,7 +37,8 @@ const int PIN_RF24_SCK = 13;
 // -------------- global objects -----------------
 LiquidCrystal lcd(PIN_1602_RS, PIN_1602_EN, PIN_1602_D4, PIN_1602_D5, PIN_1602_D6, PIN_1602_D7); // create an LCD object
 RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
-const byte RF24_ADDR[6] = "00001";
+const byte RF24_ADDR_RC[6] = "00001";
+const byte RF24_ADDR_ROBOT[6] = "00002";
 
 // -------------- mode -----------------
 const char CMD_MODE [] = "MODE";
@@ -71,8 +72,9 @@ const byte CMD_TELE_PID [] = "TLPI";
 const byte CMD_TELE_4WAY_OBSTACLE_DETECTION [] = "TL4W";
 const byte CMD_TELE_ULTRA_SONIC [] = "TLUS";
 const byte CMD_TELE_RF24 [] = "TLRF";
-int countWheelL = 0;
-int countWheelR = 0;
+byte countWheelL = 0;
+byte countWheelR = 0;
+byte infra4WayFlags = 0;
 
 // -------------- controls vaiables -----------------
 unsigned long lastControlMs = 0;
@@ -92,31 +94,31 @@ void setup() {
   lcd.print("Booting...");
 
   radio.begin();
-  radio.openWritingPipe(RF24_ADDR);
-  //radio.openReadingPipe(0, RF24_ADDR);
+  radio.openWritingPipe(RF24_ADDR_ROBOT);
+  radio.openReadingPipe(0, RF24_ADDR_RC);
   radio.setPALevel(RF24_PA_HIGH);
-  radio.setDataRate(RF24_2MBPS);
+  radio.setDataRate(RF24_1MBPS);
   radio.setRetries(20, 2); // 20x250us=5ms
-  radio.setChannel(86);
+  radio.setChannel(117);
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
   setDebugMode(CMD_DEBUG_JOYSTICK);
 }
 
 void loop() {
+  receiveCommand();
+  checkInput();
   refreshDisplay();
-  receiveTelemetry();
-  checkJoystickButton();
 }
 
 void refreshDisplay() {
   if (millis() - lastLCDMs < 200) { //don't refresh debug info too frequently
     return;
   }
-  lcd.clear();
+  
   lcd.setCursor(0, 0);
-  //lcd.print("                ");
-  //lcd.setCursor(0, 0);
+  lcd.print("                ");
+  lcd.setCursor(0, 0);
   switch (cmdRunMode) {
     case CMD_MODE_MANUAL_PID:
       lcd.print("M: Manual PID");
@@ -137,13 +139,13 @@ void refreshDisplay() {
   }
 
   lcd.setCursor(0, 1);
-  //lcd.print("                ");
-  //lcd.setCursor(0, 1);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
   switch (cmdDebugMode) {
     case CMD_DEBUG_JOYSTICK:
       lcd.print("D: Stick=");
       lcd.print((int) cmdMoveH);
-      lcd.print(",");
+      lcd.print(',');
       lcd.print((int) cmdMoveV);
       break;
     case CMD_DEBUG_PID:
@@ -151,9 +153,21 @@ void refreshDisplay() {
       break;
     case CMD_DEBUG_WHEEL_COUNTER:
       lcd.print("D: Wheel=");
+      lcd.print((unsigned int) countWheelL);
+      lcd.print(',');
+      lcd.print((unsigned int) countWheelR);
+      Serial.println(countWheelL);
+      Serial.println((unsigned int) countWheelL);
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       lcd.print("D: 4WAY=");
+      char infraDisplay [5];
+      if (infra4WayFlags & B00000001) infraDisplay[0] = 'X'; else infraDisplay[0] = 'O';
+      if (infra4WayFlags & B00000010) infraDisplay[1] = 'X'; else infraDisplay[1] = 'O';
+      if (infra4WayFlags & B00000100) infraDisplay[2] = 'X'; else infraDisplay[2] = 'O';
+      if (infra4WayFlags & B00001000) infraDisplay[3] = 'X'; else infraDisplay[3] = 'O';
+      infraDisplay[4] = '\0';
+      lcd.print(infraDisplay);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
       lcd.print("D: Sonic=");
@@ -214,57 +228,56 @@ void setDebugMode(int m) {
   cmdDebugMode = m;
 }
 
-void checkJoystickButton() {
-  if (millis() - lastControlMs > 50) { // debounce buttons
-    int btn1 = digitalRead(PIN_BTN_1);
-    if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
-      setRunMode(((int) cmdRunMode + 1) % 4);
-    }
-    lastBtn1 = btn1;
-
-    int btn2 = digitalRead(PIN_BTN_2);
-    if (lastBtn2 == HIGH && btn2 == LOW) { // avoid repeating while keeping the button pressed
-      setDebugMode(((int) cmdDebugMode + 1) % 6);
-    }
-    lastBtn2 = btn2;
-
-    int btn3 = digitalRead(PIN_BTN_3);
-    if (lastBtn3 == HIGH && btn3 == LOW) { // avoid repeating while keeping the button pressed
-      sendCommand(CMD_HORN, 0, 0);
-    }
-    lastBtn3 = btn3;
-
-    float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
-    float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
-
-    h = (h - 165) * 1.4925 - 498;
-    v = (v - 215) * 1.9417 - 495;
-
-    int hNoise = v * 0.375;
-    int vNoise = h * 0.765;
-    h = (int) ((h - hNoise) / 100);
-    v = (int) ((v - vNoise) / 100);
-    // now h v ranges from -3 to 3.
-    if (h < 0) {
-      cmdMoveH = 1;
-    } else if (h > 0) {
-      cmdMoveH = 3;
-    } else {
-      cmdMoveH = 2;
-    }
-    if (v < 0) {
-      cmdMoveV = 1;
-    } else if (v > 0) {
-      cmdMoveV = 3;
-    } else {
-      cmdMoveV = 2;
-    }
-    sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV); // this is a speical continuous message
-    lastControlMs = millis();
+void checkInput() {
+  if (millis() - lastControlMs < 50) return; // debounce buttons
+  int btn1 = digitalRead(PIN_BTN_1);
+  if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
+    setRunMode(((int) cmdRunMode + 1) % 4);
   }
+  lastBtn1 = btn1;
+
+  int btn2 = digitalRead(PIN_BTN_2);
+  if (lastBtn2 == HIGH && btn2 == LOW) { // avoid repeating while keeping the button pressed
+    setDebugMode(((int) cmdDebugMode + 1) % 6);
+  }
+  lastBtn2 = btn2;
+
+  int btn3 = digitalRead(PIN_BTN_3);
+  if (lastBtn3 == HIGH && btn3 == LOW) { // avoid repeating while keeping the button pressed
+    sendCommand(CMD_HORN, 0, 0);
+  }
+  lastBtn3 = btn3;
+
+  float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
+  float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
+
+  h = (h - 165) * 1.4925 - 498;
+  v = (v - 215) * 1.9417 - 495;
+
+  int hNoise = v * 0.375;
+  int vNoise = h * 0.765;
+  h = (int) ((h - hNoise) / 100);
+  v = (int) ((v - vNoise) / 100);
+  // now h v ranges from -3 to 3.
+  if (h < 0) {
+    cmdMoveH = 1;
+  } else if (h > 0) {
+    cmdMoveH = 3;
+  } else {
+    cmdMoveH = 2;
+  }
+  if (v < 0) {
+    cmdMoveV = 1;
+  } else if (v > 0) {
+    cmdMoveV = 3;
+  } else {
+    cmdMoveV = 2;
+  }
+  sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV); // this is a speical continuous message
+  lastControlMs = millis();
 }
 
-void sendCommand(byte * cmd1, byte param1, byte param2) {  
+void sendCommand(byte * cmd1, byte param1, byte param2) {
   byte cmd [7];
   for (int i = 0; i < 4; i++) {
     cmd[i] = cmd1[i];
@@ -289,14 +302,39 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
   radio.startListening();
 }
 
-void receiveTelemetry() {
+void receiveCommand() {
   if (!radio.available()) {
     return;
   }
-  const char text[32];
-  radio.read(&text, sizeof(text));
+  const char cmd[32];
+  radio.read(&cmd, sizeof(cmd));
   if (enableSerial) {
-    Serial.print("Received telemetry data:");
-    Serial.println(text);
+    Serial.print("Received CMD:");
+    Serial.println(cmd);
   }
+
+  if (matchCmd(cmd, CMD_TELE_WHEEL_COUNTER)) {
+    countWheelL = cmd[4];
+    countWheelR = cmd[5];
+  } else if (matchCmd(cmd, CMD_TELE_PID)) {
+    
+  } else if (matchCmd(cmd, CMD_TELE_4WAY_OBSTACLE_DETECTION)) {
+    infra4WayFlags = cmd[4];
+    if (enableSerial) Serial.println(infra4WayFlags);
+  } else if (matchCmd(cmd, CMD_TELE_ULTRA_SONIC)) {
+    
+  } else if (matchCmd(cmd, CMD_TELE_RF24)) {
+    
+  }
+
+}
+
+bool matchCmd (const byte *p1, const byte *p2)
+{
+  for (int i = 0; i < 4; i++) {
+    if (* p1++ != * p2++) {
+      return false;
+    }
+  }
+  return true;
 }
