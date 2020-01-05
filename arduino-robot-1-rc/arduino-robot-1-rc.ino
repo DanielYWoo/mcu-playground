@@ -54,7 +54,10 @@ byte cmdMoveH = 0;
 byte cmdMoveV = 0;
 
 // -------------- horn -----------------
-const char CMD_HORN[] = "HORN";
+const char CMD_HORN [] = "HORN";
+
+// ------------ servo test -------------
+const char CMD_SERVO_TEST [] = "SERV";
 
 // -------------- debug -----------------
 const byte CMD_DEBUG [] = "DBUG";
@@ -248,6 +251,12 @@ void checkInput() {
   }
   lastBtn3 = btn3;
 
+  int btn4 = digitalRead(PIN_BTN_4);
+  if (lastBtn4 == HIGH && btn4 == LOW) { // avoid repeating while keeping the button pressed
+    sendCommand(CMD_SERVO_TEST, 0, 0);
+  }
+  lastBtn4 = btn4;
+
   float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
   float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
 
@@ -326,7 +335,6 @@ void receiveCommand() {
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
     
   }
-
 }
 
 bool matchCmd (const byte *p1, const byte *p2)
