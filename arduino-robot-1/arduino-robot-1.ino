@@ -58,8 +58,8 @@ const int REG_HORN_OUT = 1;
 
 // -------------- global objects ---------------
 RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
-const byte RF24_ADDR[6] = "00001";
-
+const byte RF24_ADDR_RC [6] = "00001";
+const byte RF24_ADDR_ROBOT [6] = "00002";
 
 // -------------- mode -----------------
 const char CMD_MODE [] = "MODE";
@@ -73,8 +73,14 @@ byte cmdRunMode = 0;
 const char CMD_MOVE[] = "MOVE";
 byte cmdMoveH = 0;
 byte cmdMoveV = 0;
-int countWheelL = 0;
-int countWheelR = 0;
+
+// --------------- speed --------------
+byte countWheelL = 0; // current
+byte countWheelR = 0;
+byte lastWheelSpeedL = 0; // last
+byte lastWheelSpeedR = 0;
+unsigned long lastWheelSpeedMs = 0; // control
+unsigned int wheelSpeedInternalMs = 500;
 
 // -------------- horn -----------------
 const char CMD_HORN[] = "HORN";
@@ -97,7 +103,7 @@ const byte CMD_TELE_PID [] = "TLPI";
 const byte CMD_TELE_4WAY_OBSTACLE_DETECTION [] = "TL4W";
 const byte CMD_TELE_ULTRA_SONIC [] = "TLUS";
 const byte CMD_TELE_RF24 [] = "TLRF";
-const int telemetryIntervalMs = 2000;
+const int telemetryIntervalMs = 200;
 unsigned long lastTelemetryMs = 0;
 
 bool enableSerial = false; // at runtime, must set to false to avoid Serial interfere
@@ -113,14 +119,13 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_LEFT_COUNTER), countWheelLeft, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_RIGHT_COUNTER), countWheelRight, CHANGE);
 
-
   radio.begin();
-  //radio.openWritingPipe(RF24_ADDR);
-  radio.openReadingPipe(0, RF24_ADDR);
+  radio.openWritingPipe(RF24_ADDR_RC);
+  radio.openReadingPipe(0, RF24_ADDR_ROBOT);
   radio.setPALevel(RF24_PA_HIGH);
-  radio.setDataRate(RF24_2MBPS);
+  radio.setDataRate(RF24_1MBPS); // if signal is poor, switch to lower speed
   radio.setRetries(20, 2); // 20x250us=5ms
-  radio.setChannel(86);
+  radio.setChannel(117); // use higer channel to avoid interference with wifi
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
   setDebugMode(CMD_DEBUG_JOYSTICK);
@@ -142,9 +147,7 @@ void countWheelRight() {
 }
 
 void receiveCommand() {
-  if (!radio.available()) {
-    return;
-  }
+  if (!radio.available()) return;
   const char cmd[32];
   radio.read(&cmd, sizeof(cmd));
   if (enableSerial && !(cmd[0] == 'M' && cmd[1] == 'O' && cmd[2] == 'V' && cmd[3] == 'E')) {
@@ -176,7 +179,7 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_PID, 1, 1); // don't exceed 255, test
       break;
     case CMD_DEBUG_WHEEL_COUNTER:
-      sendCommand(CMD_TELE_WHEEL_COUNTER, countWheelL, countWheelR); // don't exceed 255
+      sendCommand(CMD_TELE_WHEEL_COUNTER, lastWheelSpeedL, lastWheelSpeedR); // don't exceed 255
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, 2, 2); // don't exceed 255
@@ -312,6 +315,11 @@ void drive() {
     bitWrite(hc595Bits, REG_HORN_OUT, 1);
   } else {
     bitWrite(hc595Bits, REG_HORN_OUT, 0);
+  }
+
+  if (millis() - lastWheelSpeedMs > wheelSpeedInternalMs) {
+    lastWheelSpeedL = countWheelL;
+    lastWheelSpeedR = countWheelR;
   }
 
   output595Bits();
