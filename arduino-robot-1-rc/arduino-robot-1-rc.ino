@@ -65,6 +65,15 @@ const byte CMD_DEBUG_ULTRA_SONIC = 4;
 const byte CMD_DEBUG_RF24 = 5;
 byte cmdDebugMode = 0;
 
+// ------------- telemetry ----------------
+const byte CMD_TELE_WHEEL_COUNTER [] = "TLWC";
+const byte CMD_TELE_PID [] = "TLPI";
+const byte CMD_TELE_4WAY_OBSTACLE_DETECTION [] = "TL4W";
+const byte CMD_TELE_ULTRA_SONIC [] = "TLUS";
+const byte CMD_TELE_RF24 [] = "TLRF";
+int countWheelL = 0;
+int countWheelR = 0;
+
 // -------------- controls vaiables -----------------
 unsigned long lastControlMs = 0;
 int lastBtn1 = 0, lastBtn2 = 0, lastBtn3 = 0, lastBtn4 = 0;
@@ -84,12 +93,14 @@ void setup() {
 
   radio.begin();
   radio.openWritingPipe(RF24_ADDR);
-  radio.setPALevel(RF24_PA_LOW);
-  radio.setDataRate(RF24_250KBPS);   //set datarate to 250kbps
-  radio.setChannel(100);             //set frequency to channel 100
+  //radio.openReadingPipe(0, RF24_ADDR);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setDataRate(RF24_2MBPS);
+  radio.setRetries(20, 2); // 20x250us=5ms
+  radio.setChannel(86);
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
-  cmdDebugMode = CMD_DEBUG_JOYSTICK;
+  setDebugMode(CMD_DEBUG_JOYSTICK);
 }
 
 void loop() {
@@ -204,7 +215,7 @@ void setDebugMode(int m) {
 }
 
 void checkJoystickButton() {
-  if (millis() - lastControlMs > 20) { // debounce buttons
+  if (millis() - lastControlMs > 50) { // debounce buttons
     int btn1 = digitalRead(PIN_BTN_1);
     if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
       setRunMode(((int) cmdRunMode + 1) % 4);
@@ -253,8 +264,7 @@ void checkJoystickButton() {
   }
 }
 
-void sendCommand(byte * cmd1, byte param1, byte param2) {
-  radio.stopListening();
+void sendCommand(byte * cmd1, byte param1, byte param2) {  
   byte cmd [7];
   for (int i = 0; i < 4; i++) {
     cmd[i] = cmd1[i];
@@ -274,18 +284,19 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
     Serial.print((byte) cmd[5]);
     Serial.println();
   }
+  radio.stopListening();
   radio.write(cmd, 7); // fixed 4 bytes command, 2 bytes params, with a zero ending
   radio.startListening();
 }
 
 void receiveTelemetry() {
-  if (radio.available()) {
-    const char text[32];
-    radio.read(&text, sizeof(text));
-    if (enableSerial) {
-      Serial.print("Received telemetry data:");
-      Serial.println(text);
-    }
-    
+  if (!radio.available()) {
+    return;
+  }
+  const char text[32];
+  radio.read(&text, sizeof(text));
+  if (enableSerial) {
+    Serial.print("Received telemetry data:");
+    Serial.println(text);
   }
 }
