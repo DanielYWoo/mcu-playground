@@ -48,10 +48,10 @@ const int PIN_SRF05_TRIG = A0;
 const int PIN_SRF05_ECHO = A1;
 
 // 4-way LED obstacle detection
-const int PIN_LED_1 = A2;
-const int PIN_LED_2 = A3;
-const int PIN_LED_3 = A4;
-const int PIN_LED_4 = A5;
+const int PIN_LED_1 = A0;
+const int PIN_LED_2 = A1;
+const int PIN_LED_3 = A2;
+const int PIN_LED_4 = A3;
 
 // horn
 const int REG_HORN_OUT = 1;
@@ -79,8 +79,6 @@ byte countWheelL = 0; // current
 byte countWheelR = 0;
 byte lastWheelSpeedL = 0; // last
 byte lastWheelSpeedR = 0;
-unsigned long lastWheelSpeedMs = 0; // control
-unsigned int wheelSpeedInternalMs = 500;
 
 // -------------- horn -----------------
 const char CMD_HORN[] = "HORN";
@@ -96,6 +94,12 @@ const byte CMD_DEBUG_4WAY_OBSTACLE_DETECTION = 3;
 const byte CMD_DEBUG_ULTRA_SONIC = 4;
 const byte CMD_DEBUG_RF24 = 5;
 byte cmdDebugMode = 0;
+
+// ---- infra 4 way obstacle detection ----
+bool infra4Way1 = false;
+bool infra4Way2 = false;
+bool infra4Way3 = false;
+bool infra4Way4 = false;
 
 // ------------- telemetry ----------------
 const byte CMD_TELE_WHEEL_COUNTER [] = "TLWC";
@@ -158,11 +162,13 @@ void receiveCommand() {
     }
     Serial.println("|");
   }
+  //  setHorn(300);
   if (matchCmd(cmd, CMD_MODE)) { // change run mode
     setRunMode(cmd[4]);
     setHorn(300);
-  } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move
-    setMove(cmd[4], cmd[5]);
+  } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move is special
+    cmdMoveH = cmd[4];
+    cmdMoveV = cmd[5];
   } else if (matchCmd(cmd, CMD_DEBUG)) {
     setDebugMode(cmd[4]);
     setHorn(300);
@@ -173,7 +179,16 @@ void receiveCommand() {
 }
 
 void sendTelemetry() {
+  infra4Way1 = digitalRead(PIN_LED_1); //LOW if blocked
+  infra4Way2 = digitalRead(PIN_LED_2);
+  infra4Way3 = digitalRead(PIN_LED_3);
+  infra4Way4 = digitalRead(PIN_LED_4);
+
   if (millis() - lastTelemetryMs < telemetryIntervalMs) return;
+
+  lastWheelSpeedL = countWheelL;
+  lastWheelSpeedR = countWheelR;
+
   switch (cmdDebugMode) {
     case CMD_DEBUG_PID:
       sendCommand(CMD_TELE_PID, 1, 1); // don't exceed 255, test
@@ -182,7 +197,12 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_WHEEL_COUNTER, lastWheelSpeedL, lastWheelSpeedR); // don't exceed 255
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
-      sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, 2, 2); // don't exceed 255
+      byte flags = 0;
+      if (!infra4Way1) flags |= B00000001;
+      if (!infra4Way2) flags |= B00000010;
+      if (!infra4Way3) flags |= B00000100;
+      if (!infra4Way4) flags |= B00001000;
+      sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, flags, 0);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, 3, 3); // don't exceed 255
@@ -242,11 +262,6 @@ void setRunMode(int m) {
   cmdRunMode = m;
 }
 
-void setMove(byte h, byte v) {
-  cmdMoveH = h;
-  cmdMoveV = v;
-}
-
 void setHorn(unsigned int duration) {
   lastHornMs = millis();
   hornDurationMs = duration;
@@ -281,13 +296,22 @@ void setDebugMode(int m) {
 }
 
 void drive() {
+  bool blocked = (cmdMoveH == 1 && cmdMoveV == 3 && (!infra4Way1 || !infra4Way2)) || // left
+                 (cmdMoveH == 2 && cmdMoveV == 3 && (!infra4Way2 || !infra4Way3)) || // straight
+                 (cmdMoveH == 3 && cmdMoveV == 3 && (!infra4Way3 || !infra4Way4));   // right
+
+  if (blocked && cmdMoveV == 3) {
+    setHorn(50);
+    cmdMoveV = 2; // brake if going forward
+  }
+
   if (cmdMoveH == 1) { // left
     analogWrite(PIN_WHEEL_LEFT_PWM, 100);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 230);
   } else if (cmdMoveH == 3) { // right
     analogWrite(PIN_WHEEL_LEFT_PWM, 230);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 100);
-  } else {
+  } else { // straight
     analogWrite(PIN_WHEEL_LEFT_PWM, 230);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
   }
@@ -309,17 +333,12 @@ void drive() {
     bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
   }
 
-
-  if (millis() - lastHornMs < hornDurationMs) {
+  unsigned long now = millis();
+  if (now - lastHornMs < hornDurationMs) {
     if (enableSerial) Serial.println("Horn ...");
     bitWrite(hc595Bits, REG_HORN_OUT, 1);
   } else {
     bitWrite(hc595Bits, REG_HORN_OUT, 0);
-  }
-
-  if (millis() - lastWheelSpeedMs > wheelSpeedInternalMs) {
-    lastWheelSpeedL = countWheelL;
-    lastWheelSpeedR = countWheelR;
   }
 
   output595Bits();
