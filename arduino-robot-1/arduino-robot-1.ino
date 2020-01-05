@@ -1,3 +1,5 @@
+#include <Servo.h>
+
 #include <printf.h>
 #include <nRF24L01.h>
 #include <RF24_config.h>
@@ -56,7 +58,7 @@ const int PIN_LED_4 = A3;
 // horn
 const int REG_HORN_OUT = 1;
 
-// -------------- global objects ---------------
+// -------------- rf24 ---------------
 RF24 radio(PIN_RF24_CE, PIN_RF24_CSN); // create a radio object
 const byte RF24_ADDR_RC [6] = "00001";
 const byte RF24_ADDR_ROBOT [6] = "00002";
@@ -84,6 +86,12 @@ byte lastWheelSpeedR = 0;
 const char CMD_HORN[] = "HORN";
 unsigned long lastHornMs = 0;
 unsigned int hornDurationMs = 0;
+
+// ------------ servo ----------------
+Servo servo;
+#define servoError 10
+const char CMD_SERVO_TEST [] = "SERV";
+byte servoDegree = 90;
 
 // -------------- debug -----------------
 const byte CMD_DEBUG [] = "DBUG";
@@ -119,6 +127,8 @@ void setup() {
   pinMode(PIN_OUT_STCP, OUTPUT);
   pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
   pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+  servo.attach(PIN_SERVO_PWM);
+  servo.write(servoDegree - servoError);
 
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_LEFT_COUNTER), countWheelLeft, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_RIGHT_COUNTER), countWheelRight, CHANGE);
@@ -174,6 +184,10 @@ void receiveCommand() {
     setHorn(300);
   } else if (matchCmd(cmd, CMD_HORN)) {
     setHorn(300);
+  } else if (matchCmd(cmd, CMD_SERVO_TEST)) {
+    servoDegree = (servoDegree + 45) % 225;
+    servo.write(servoDegree - servoError); // write once, keep its PWM status
+    setHorn(100);
   }
 
 }
@@ -296,10 +310,7 @@ void setDebugMode(int m) {
 }
 
 void drive() {
-  bool blocked = (cmdMoveH == 1 && cmdMoveV == 3 && (!infra4Way1 || !infra4Way2)) || // left
-                 (cmdMoveH == 2 && cmdMoveV == 3 && (!infra4Way2 || !infra4Way3)) || // straight
-                 (cmdMoveH == 3 && cmdMoveV == 3 && (!infra4Way3 || !infra4Way4));   // right
-
+  bool blocked = !infra4Way1 || !infra4Way2 || !infra4Way3 || !infra4Way4;
   if (blocked && cmdMoveV == 3) {
     setHorn(50);
     cmdMoveV = 2; // brake if going forward
