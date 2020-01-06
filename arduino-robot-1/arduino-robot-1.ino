@@ -18,9 +18,9 @@ const int PIN_OUT_STCP = 4;
 byte hc595Bits = 0;
 
 // mouth and heart
-// 2 pins of 595 chip for the OLED screen
-const int REG_MOUTH_SCL = 0;
-const int REG_MOUTH_SDA = 1;
+// Must be A4/A5 for the OLED screen
+//const int REG_MOUTH_SCL = 0;
+//const int REG_MOUTH_SDA = 1;
 
 // wheels, including 4 pins of 595 chip
 const int REG_WHEEL_LEFT_OUT1 = 2;
@@ -46,8 +46,8 @@ const int PIN_RF24_MISO = 12; // fixed, cannot change
 const int PIN_RF24_SCK = 13; // fixed, cannot change
 
 // ultra sonic
-const int PIN_SRF05_TRIG = A0;
-const int PIN_SRF05_ECHO = A1;
+const int PIN_SRF05_TRIG = A4;
+const int PIN_SRF05_ECHO = A5;
 
 // 4-way LED obstacle detection
 const int PIN_LED_1 = A0;
@@ -92,6 +92,7 @@ Servo servo;
 #define servoError 10
 const char CMD_SERVO_TEST [] = "SERV";
 byte servoDegree = 90;
+int ultraSonicDistanceCM = 0; // maxmium to 300cm
 
 // -------------- debug -----------------
 const byte CMD_DEBUG [] = "DBUG";
@@ -188,11 +189,12 @@ void receiveCommand() {
     servoDegree = (servoDegree + 45) % 225;
     servo.write(servoDegree - servoError); // write once, keep its PWM status
     setHorn(100);
+    checkDistance();
   }
-
 }
 
 void sendTelemetry() {
+  // avoiding crash is important so we have to read very frequently, ignore the telemetry interval
   infra4Way1 = digitalRead(PIN_LED_1); //LOW if blocked
   infra4Way2 = digitalRead(PIN_LED_2);
   infra4Way3 = digitalRead(PIN_LED_3);
@@ -219,7 +221,7 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, flags, 0);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
-      sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, 3, 3); // don't exceed 255
+      sendCommand(CMD_TELE_ULTRA_SONIC, ultraSonicDistanceCM >> 8, ultraSonicDistanceCM); // don't exceed 255
       break;
     case CMD_DEBUG_RF24:
       sendCommand(CMD_TELE_RF24, 4, 4); // don't exceed 255
@@ -353,6 +355,16 @@ void drive() {
   }
 
   output595Bits();
+}
+
+void checkDistance() {
+  digitalWrite(PIN_SRF05_TRIG, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PIN_SRF05_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_SRF05_TRIG, LOW);
+  const unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH);
+  ultraSonicDistanceCM = duration / 58; // divide by 29, then 2 (round trip)
 }
 
 bool matchCmd (const byte *p1, const byte *p2)
