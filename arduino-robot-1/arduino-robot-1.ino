@@ -92,7 +92,7 @@ Servo servo;
 #define servoError 10
 const char CMD_SERVO_TEST [] = "SERV";
 byte servoDegree = 90;
-int ultraSonicDistanceCM = 0; // maxmium to 300cm
+int ultraSonicDistanceCM = 0; // maxmium to 255cm
 
 // -------------- debug -----------------
 const byte CMD_DEBUG [] = "DBUG";
@@ -221,7 +221,7 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, flags, 0);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
-      sendCommand(CMD_TELE_ULTRA_SONIC, ultraSonicDistanceCM >> 8, ultraSonicDistanceCM); // don't exceed 255
+      sendCommand(CMD_TELE_ULTRA_SONIC, ultraSonicDistanceCM >> 8, ultraSonicDistanceCM);
       break;
     case CMD_DEBUG_RF24:
       sendCommand(CMD_TELE_RF24, 4, 4); // don't exceed 255

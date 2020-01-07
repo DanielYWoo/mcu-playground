@@ -78,6 +78,7 @@ const byte CMD_TELE_RF24 [] = "TLRF";
 byte countWheelL = 0;
 byte countWheelR = 0;
 byte infra4WayFlags = 0;
+int ultraSonicDistanceCM = 0;
 
 // -------------- controls vaiables -----------------
 unsigned long lastControlMs = 0;
@@ -174,6 +175,8 @@ void refreshDisplay() {
       break;
     case CMD_DEBUG_ULTRA_SONIC:
       lcd.print("D: Sonic=");
+      lcd.print(ultraSonicDistanceCM);
+      lcd.println("CM");
       break;
     case CMD_DEBUG_RF24:
       lcd.print("D: RF24=");
@@ -331,7 +334,8 @@ void receiveCommand() {
     infra4WayFlags = cmd[4];
     if (enableSerial) Serial.println(infra4WayFlags);
   } else if (matchCmd(cmd, CMD_TELE_ULTRA_SONIC)) {
-    
+    ultraSonicDistanceCM = cmd[4] << 8;
+    ultraSonicDistanceCM ^= cmd[5];
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
     
   }
