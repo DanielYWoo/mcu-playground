@@ -176,7 +176,7 @@ void refreshDisplay() {
     case CMD_DEBUG_ULTRA_SONIC:
       lcd.print("D: Sonic=");
       lcd.print(ultraSonicDistanceCM);
-      lcd.println("CM");
+      lcd.print("CM");
       break;
     case CMD_DEBUG_RF24:
       lcd.print("D: RF24=");
@@ -337,7 +337,7 @@ void receiveCommand() {
     ultraSonicDistanceCM = cmd[4] << 8;
     ultraSonicDistanceCM ^= cmd[5];
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
-    
+    Serial.println("2222222222222222");
   }
 }
 
