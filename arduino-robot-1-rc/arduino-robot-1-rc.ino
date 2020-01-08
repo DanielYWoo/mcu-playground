@@ -119,7 +119,7 @@ void refreshDisplay() {
   if (millis() - lastLCDMs < 200) { //don't refresh debug info too frequently
     return;
   }
-  
+
   lcd.setCursor(0, 0);
   lcd.print("                ");
   lcd.setCursor(0, 0);
@@ -329,24 +329,27 @@ void receiveCommand() {
     countWheelL = cmd[4];
     countWheelR = cmd[5];
   } else if (matchCmd(cmd, CMD_TELE_PID)) {
-    
+
   } else if (matchCmd(cmd, CMD_TELE_4WAY_OBSTACLE_DETECTION)) {
     infra4WayFlags = cmd[4];
     if (enableSerial) Serial.println(infra4WayFlags);
   } else if (matchCmd(cmd, CMD_TELE_ULTRA_SONIC)) {
-    ultraSonicDistanceCM = cmd[4] << 8;
-    ultraSonicDistanceCM ^= cmd[5];
+    int tmp = 0X0000 | cmd[4];
+    ultraSonicDistanceCM = (tmp << 8) | cmd[5];    
+    if (enableSerial) {
+      Serial.print("cmd4:");
+      Serial.println((int) cmd[4]);
+      Serial.print(", cmd5:");
+      Serial.println((int) cmd[5]);
+    }
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
-    Serial.println("2222222222222222");
+    
   }
 }
 
-bool matchCmd (const byte *p1, const byte *p2)
-{
+bool matchCmd (const byte *p1, const byte *p2) {
   for (int i = 0; i < 4; i++) {
-    if (* p1++ != * p2++) {
-      return false;
-    }
+    if (* p1++ != * p2++) return false;
   }
   return true;
 }

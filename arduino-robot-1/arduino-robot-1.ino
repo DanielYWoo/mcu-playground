@@ -128,6 +128,9 @@ void setup() {
   pinMode(PIN_OUT_STCP, OUTPUT);
   pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
   pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+  pinMode(PIN_SRF05_TRIG, OUTPUT);
+  pinMode(PIN_SRF05_ECHO, INPUT);
+
   servo.attach(PIN_SERVO_PWM);
   servo.write(servoDegree - servoError);
 
@@ -146,8 +149,7 @@ void setup() {
   setDebugMode(CMD_DEBUG_JOYSTICK);
 }
 
-void loop()
-{
+void loop() {
   receiveCommand();
   drive();
   sendTelemetry();
@@ -186,9 +188,10 @@ void receiveCommand() {
   } else if (matchCmd(cmd, CMD_HORN)) {
     setHorn(300);
   } else if (matchCmd(cmd, CMD_SERVO_TEST)) {
+    setHorn(100);
     servoDegree = (servoDegree + 45) % 225;
     servo.write(servoDegree - servoError); // write once, keep its PWM status
-    setHorn(100);
+    delay(1000); // wait for the servo to stop
     checkDistance();
   }
 }
@@ -204,7 +207,7 @@ void sendTelemetry() {
 
   lastWheelSpeedL = countWheelL;
   lastWheelSpeedR = countWheelR;
-
+  byte flags = 0;
   switch (cmdDebugMode) {
     case CMD_DEBUG_PID:
       sendCommand(CMD_TELE_PID, 1, 1); // don't exceed 255, test
@@ -213,7 +216,6 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_WHEEL_COUNTER, lastWheelSpeedL, lastWheelSpeedR); // don't exceed 255
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
-      byte flags = 0;
       if (!infra4Way1) flags |= B00000001;
       if (!infra4Way2) flags |= B00000010;
       if (!infra4Way3) flags |= B00000100;
@@ -348,7 +350,6 @@ void drive() {
 
   unsigned long now = millis();
   if (now - lastHornMs < hornDurationMs) {
-    if (enableSerial) Serial.println("Horn ...");
     bitWrite(hc595Bits, REG_HORN_OUT, 1);
   } else {
     bitWrite(hc595Bits, REG_HORN_OUT, 0);
@@ -363,16 +364,16 @@ void checkDistance() {
   digitalWrite(PIN_SRF05_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PIN_SRF05_TRIG, LOW);
-  const unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH);
-  ultraSonicDistanceCM = duration / 58; // divide by 29, then 2 (round trip)
+  unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);
+  if (duration <= 0) {
+    setHorn(3000); // this is very wrong!
+  }
+  ultraSonicDistanceCM = duration / 58.8; // divide by 29, then 2 (round trip)
 }
 
-bool matchCmd (const byte *p1, const byte *p2)
-{
+bool matchCmd (const byte *p1, const byte *p2) {
   for (int i = 0; i < 4; i++) {
-    if (* p1++ != * p2++) {
-      return false;
-    }
+    if (* p1++ != * p2++) return false;
   }
   return true;
 }
