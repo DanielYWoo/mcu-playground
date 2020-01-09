@@ -1,9 +1,13 @@
 #include <Servo.h>
 
+// rf24
 #include <printf.h>
 #include <nRF24L01.h>
 #include <RF24_config.h>
 #include <RF24.h>
+
+// debug
+#include <EEPROM.h>
 
 /**
    3-wheel robot with a Uno
@@ -122,12 +126,12 @@ unsigned long lastTelemetryMs = 0;
 bool enableSerial = false; // at runtime, must set to false to avoid Serial interfere
 
 void setup() {
-  if (enableSerial) Serial.begin(9600);
+  if (enableSerial) Serial.begin(9600);  
   pinMode(PIN_OUT_DS, OUTPUT);
   pinMode(PIN_OUT_SHCP, OUTPUT);
   pinMode(PIN_OUT_STCP, OUTPUT);
   pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
-  pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+  pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);  
   pinMode(PIN_SRF05_TRIG, OUTPUT);
   pinMode(PIN_SRF05_ECHO, INPUT);
 
@@ -147,6 +151,12 @@ void setup() {
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
   setDebugMode(CMD_DEBUG_JOYSTICK);
+  int tmp;
+  EEPROM.get(0, tmp);
+  if (enableSerial) {
+    Serial.print("-debug--");
+    Serial.println(tmp);
+  }
 }
 
 void loop() {
@@ -223,6 +233,10 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, flags, 0);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
+      if (ultraSonicDistanceCM < 0 || ultraSonicDistanceCM >> 8 < 0) {
+        setHorn(100);
+        EEPROM.write(0, ultraSonicDistanceCM); // save the error for debug
+      }
       sendCommand(CMD_TELE_ULTRA_SONIC, ultraSonicDistanceCM >> 8, ultraSonicDistanceCM);
       break;
     case CMD_DEBUG_RF24:
@@ -364,10 +378,7 @@ void checkDistance() {
   digitalWrite(PIN_SRF05_TRIG, HIGH);
   delayMicroseconds(10);
   digitalWrite(PIN_SRF05_TRIG, LOW);
-  unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);
-  if (duration <= 0) {
-    setHorn(3000); // this is very wrong!
-  }
+  unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);  
   ultraSonicDistanceCM = duration / 58.8; // divide by 29, then 2 (round trip)
 }
 

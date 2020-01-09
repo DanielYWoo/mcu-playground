@@ -1,7 +1,5 @@
 /**
-
    remote control with a Nano or Pro Mini
-
 */
 // for 1602
 #include <LiquidCrystal.h>
@@ -315,9 +313,8 @@ void sendCommand(byte * cmd1, byte param1, byte param2) {
 }
 
 void receiveCommand() {
-  if (!radio.available()) {
-    return;
-  }
+  if (!radio.available()) return;
+
   const char cmd[32];
   radio.read(&cmd, sizeof(cmd));
   if (enableSerial) {
