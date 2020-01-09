@@ -358,6 +358,7 @@
 
     bool blocked = !infra4Way1 || !infra4Way2 || !infra4Way3 || !infra4Way4;
     if (blocked) {
+      if (enableSerial) Serial.println("blocked in auto pilot mode");
       setHorn(50);
       cmdMoveV = 1;
       drive();
@@ -365,23 +366,34 @@
       cmdMoveV = 2;
       drive(); // stop it
 
-      servo.write(0 - servoError); // write once, keep its PWM status
+      servo.write(180 - servoError); // write once, keep its PWM status
       delay(1000); // wait for the servo to stop
       int distLeft = checkDistance();
       servo.write(90 - servoError); // write once, keep its PWM status
       delay(1000); // wait for the servo to stop
       int distMiddle = checkDistance();
-      servo.write(180 - servoError); // write once, keep its PWM status
+      servo.write(0 - servoError); // write once, keep its PWM status
       delay(1000); // wait for the servo to stop
       int distRight = checkDistance();
 
       // adjust strategy
+      if (enableSerial) {
+        Serial.print(distLeft);
+        Serial.print(':');
+        Serial.print(distMiddle);
+        Serial.print(':');
+        Serial.println(distRight);
+      }
       if (distLeft >= distMiddle && distLeft >= distRight) {
         cmdMoveH = 1;
       } else if (distRight >= distMiddle && distRight >= distLeft) {
         cmdMoveH = 3;
       } else {
         cmdMoveH = 2;
+      }
+      if (enableSerial) {
+        Serial.print("decision:");
+        Serial.println(cmdMoveH);
       }
     }
     drive();
