@@ -9,8 +9,6 @@
 #include <RF24.h>
 
 // debug
-#include <EEPROM.h>
-
 /**
    3-wheel robot with a Uno
    three PWM pins, two for wheel with a timer, one for servo with another timer
@@ -170,12 +168,6 @@ void setup() {
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
   setDebugMode(CMD_DEBUG_JOYSTICK);
-  int tmp;
-  EEPROM.get(0, tmp);
-  if (enableSerial) {
-    Serial.print("-debug--");
-    Serial.println(tmp);
-  }
 
   wheelPIDL.setTimeStep(200);
   wheelPIDR.setTimeStep(200);
@@ -235,7 +227,7 @@ void receiveCommand() {
     setHorn(100);
     servoDegree = (servoDegree + 45) % 225;
     servo.write(servoDegree - servoError); // write once, keep its PWM status
-    delay(1000); // wait for the servo to stop
+    delay(2000); // wait for the servo to stop
     checkDistance();
   }
 }
@@ -269,10 +261,6 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_4WAY_OBSTACLE_DETECTION, flags, 0);
       break;
     case CMD_DEBUG_ULTRA_SONIC:
-      if (ultraSonicDistanceCM < 0 || ultraSonicDistanceCM >> 8 < 0) {
-        setHorn(100);
-        EEPROM.write(0, ultraSonicDistanceCM); // save the error for debug
-      }
       sendCommand(CMD_TELE_ULTRA_SONIC, ultraSonicDistanceCM >> 8, ultraSonicDistanceCM);
       break;
     case CMD_DEBUG_RF24:
@@ -391,10 +379,13 @@ void autopilot() {
 
     // adjust strategy
     if (distLeft >= distMiddle && distLeft >= distRight) {
+      setHorn(100);
       cmdMoveH = 1;
     } else if (distRight >= distMiddle && distRight >= distLeft) {
+      setHorn(2000);
       cmdMoveH = 3;
     } else {
+      setHorn(5000);
       cmdMoveH = 2;
     }
     cmdMoveV = 3;
