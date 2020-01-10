@@ -104,7 +104,8 @@ void setup() {
   radio.setChannel(117);
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
-  setDebugMode(CMD_DEBUG_JOYSTICK);
+  setDebugMode(CMD_DEBUG_ULTRA_SONIC);
+  //setDebugMode(CMD_DEBUG_JOYSTICK);
 }
 
 void loop() {
@@ -331,16 +332,11 @@ void receiveCommand() {
     infra4WayFlags = cmd[4];
     if (enableSerial) Serial.println(infra4WayFlags);
   } else if (matchCmd(cmd, CMD_TELE_ULTRA_SONIC)) {
-    int tmp = 0X0000 | cmd[4];
-    ultraSonicDistanceCM = (tmp << 8) | cmd[5];    
-    if (enableSerial) {
-      Serial.print("cmd4:");
-      Serial.println((int) cmd[4]);
-      Serial.print(", cmd5:");
-      Serial.println((int) cmd[5]);
-    }
+    int tmp = cmd[4];
+    tmp = tmp << 8;
+    ultraSonicDistanceCM = cmd[5] & 0X00FF | tmp;    
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
-    
+
   }
 }
 
