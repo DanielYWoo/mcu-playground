@@ -104,8 +104,7 @@ void setup() {
   radio.setChannel(117);
   radio.startListening();
   setRunMode(CMD_MODE_MANUAL_PID);
-  setDebugMode(CMD_DEBUG_ULTRA_SONIC);
-  //setDebugMode(CMD_DEBUG_JOYSTICK);
+  setDebugMode(CMD_DEBUG_JOYSTICK);
 }
 
 void loop() {
@@ -262,28 +261,29 @@ void checkInput() {
   float h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
   float v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
 
-  h = (h - 165) * 1.4925 - 498;
-  v = (v - 215) * 1.9417 - 495;
-
-  int hNoise = v * 0.375;
-  int vNoise = h * 0.765;
-  h = (int) ((h - hNoise) / 100);
-  v = (int) ((v - vNoise) / 100);
-  // now h v ranges from -3 to 3.
-  if (h < 0) {
+  if (h < 200 && v < 200) {
     cmdMoveH = 1;
-  } else if (h > 0) {
-    cmdMoveH = 3;
-  } else {
-    cmdMoveH = 2;
-  }
-  if (v < 0) {
     cmdMoveV = 1;
-  } else if (v > 0) {
+  } else if (h < 360 && v < 260) {
+    cmdMoveH = 2;
+    cmdMoveV = 1;
+  } else if (h > 950 && v > 900) {
+    cmdMoveH = 3;
     cmdMoveV = 3;
-  } else {
+  } else if (h > 520 && v > 700) {
+    cmdMoveH = 2;
+    cmdMoveV = 3;
+  } else if (h > 500 && v > 650) {
+    cmdMoveH = 1;
+    cmdMoveV = 3;
+  } else if (h > 500 && v > 500) {
+    cmdMoveH = 2;
     cmdMoveV = 2;
+  } else if (h > 530 && v > 340) {
+    cmdMoveH = 3;
+    cmdMoveV = 1;
   }
+
   sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV); // this is a speical continuous message
   lastControlMs = millis();
 }
@@ -334,7 +334,7 @@ void receiveCommand() {
   } else if (matchCmd(cmd, CMD_TELE_ULTRA_SONIC)) {
     int tmp = cmd[4];
     tmp = tmp << 8;
-    ultraSonicDistanceCM = cmd[5] & 0X00FF | tmp;    
+    ultraSonicDistanceCM = cmd[5] & 0X00FF | tmp;
   } else if (matchCmd(cmd, CMD_TELE_RF24)) {
 
   }

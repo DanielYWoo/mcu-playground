@@ -1,5 +1,3 @@
-#include <AutoPID.h>
-
 #include <Servo.h>
 
 // rf24
@@ -83,13 +81,9 @@ byte countWheelL = 0; // current
 byte countWheelR = 0;
 double lastWheelSpeedL = 0; // last
 double lastWheelSpeedR = 0;
-double wheelSpeedLSetpoint = 40; // target
-double wheelSpeedRSetpoint = 40;
-double wheelPWML = 240; // output
-double wheelPWMR = 240;
+double wheelPWML = 230; // output
+double wheelPWMR = 200;
 long lastAutopilotAdjustMs = 0;
-AutoPID wheelPIDL(&lastWheelSpeedL, &wheelSpeedLSetpoint, &wheelPWML, 0, 254, 5, 4, 3);
-AutoPID wheelPIDR(&lastWheelSpeedR, &wheelSpeedRSetpoint, &wheelPWMR, 0, 254, 5, 4, 3);
 
 // -------------- horn -----------------
 const char CMD_HORN[] = "HORN";
@@ -166,12 +160,9 @@ void setup() {
   radio.setChannel(117); // use higer channel to avoid interference with wifi
   radio.startListening();
 
-  bitWrite(hc595Bits, REG_LED_DEBUG, LOW);
-  setRunMode(CMD_MODE_MANUAL_PID);  
+  //bitWrite(hc595Bits, REG_LED_DEBUG, LOW);
+  setRunMode(CMD_MODE_MANUAL_PID);
   setDebugMode(CMD_DEBUG_ULTRA_SONIC);
-
-  wheelPIDL.setTimeStep(200);
-  wheelPIDR.setTimeStep(200);
 }
 
 void loop() {
@@ -248,7 +239,7 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_PID, 1, 1); // don't exceed 255, test
       break;
     case CMD_DEBUG_WHEEL_COUNTER:
-      sendCommand(CMD_TELE_WHEEL_COUNTER, (byte) lastWheelSpeedL, (byte) lastWheelSpeedR); // don't exceed 255
+      sendCommand(CMD_TELE_WHEEL_COUNTER, (byte) wheelPWML, (byte) wheelPWMR); // don't exceed 255
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       if (!infra4Way1) flags |= B00000001;
@@ -357,6 +348,8 @@ void autopilot() {
     delay(1000); // wait for the servo to stop
     int distLeft = checkDistance();
 
+    servo.write(90 - servoError); // better looking, face foward
+
     // adjust strategy
     if (distLeft >= distRight) {
       cmdMoveH = 1;
@@ -378,23 +371,23 @@ void autopilot() {
 void drive() {
   if (read4Way() && cmdMoveV == 3) {
     setHorn(100);
-    flash(true);    
+    flash(true);
     cmdMoveV = 2; // brake if going forward
   }
 
   if (cmdMoveH == 1) { // left
     analogWrite(PIN_WHEEL_LEFT_PWM, 0);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, wheelPWMR);
     bitWrite(hc595Bits, REG_LED_LEFT, 1);
     bitWrite(hc595Bits, REG_LED_RIGHT, 0);
   } else if (cmdMoveH == 3) { // right
-    analogWrite(PIN_WHEEL_LEFT_PWM, 230);
+    analogWrite(PIN_WHEEL_LEFT_PWM, wheelPWML);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 0);
     bitWrite(hc595Bits, REG_LED_LEFT, 0);
     bitWrite(hc595Bits, REG_LED_RIGHT, 1);
   } else { // straight
-    analogWrite(PIN_WHEEL_LEFT_PWM, 230);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+    analogWrite(PIN_WHEEL_LEFT_PWM, wheelPWML);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, wheelPWMR);
     bitWrite(hc595Bits, REG_LED_LEFT, 0);
     bitWrite(hc595Bits, REG_LED_RIGHT, 0);
   }
