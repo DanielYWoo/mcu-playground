@@ -8,7 +8,6 @@
 #include <RF24_config.h>
 #include <RF24.h>
 
-// debug
 /**
    3-wheel robot with a Uno
    three PWM pins, two for wheel with a timer, one for servo with another timer
@@ -21,7 +20,7 @@ const int PIN_OUT_SHCP = 1;
 const int PIN_OUT_STCP = 4;
 byte hc595Bits = 0;
 
-const int REG_LED_MIDDLE = 0;
+const int REG_LED_DEBUG = 0; // debug
 const int REG_LED_LEFT = 6;
 const int REG_LED_RIGHT = 7;
 
@@ -166,8 +165,10 @@ void setup() {
   radio.setRetries(20, 2); // 20x250us=5ms
   radio.setChannel(117); // use higer channel to avoid interference with wifi
   radio.startListening();
-  setRunMode(CMD_MODE_MANUAL_PID);
-  setDebugMode(CMD_DEBUG_JOYSTICK);
+
+  bitWrite(hc595Bits, REG_LED_DEBUG, LOW);
+  setRunMode(CMD_MODE_MANUAL_PID);  
+  setDebugMode(CMD_DEBUG_ULTRA_SONIC);
 
   wheelPIDL.setTimeStep(200);
   wheelPIDR.setTimeStep(200);
@@ -215,9 +216,11 @@ void receiveCommand() {
   if (matchCmd(cmd, CMD_MODE)) { // change run mode
     setRunMode(cmd[4]);
     setHorn(300);
-  } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) { // move is special
+  } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) {
+    // move is special, in manual mode you must continuously receive command
     cmdMoveH = cmd[4];
     cmdMoveV = cmd[5];
+    flash(cmdMoveV == 2);
   } else if (matchCmd(cmd, CMD_DEBUG)) {
     setDebugMode(cmd[4]);
     setHorn(300);
@@ -227,20 +230,14 @@ void receiveCommand() {
     setHorn(100);
     servoDegree = (servoDegree + 45) % 225;
     servo.write(servoDegree - servoError); // write once, keep its PWM status
-    delay(2000); // wait for the servo to stop
+    delay(1000); // wait for the servo to stop
     checkDistance();
   }
 }
 
 void sendTelemetry() {
-  // avoiding crash is important so we have to read very frequently, ignore the telemetry interval
-  infra4Way1 = digitalRead(PIN_LED_1); //LOW if blocked
-  infra4Way2 = digitalRead(PIN_LED_2);
-  infra4Way3 = digitalRead(PIN_LED_3);
-  infra4Way4 = digitalRead(PIN_LED_4);
-
   if (millis() - lastTelemetryMs < telemetryIntervalMs) return;
-
+  read4Way();
   lastWheelSpeedL = countWheelL;
   lastWheelSpeedR = countWheelR;
   countWheelL = 0;
@@ -318,12 +315,6 @@ void setRunMode(int m) {
   cmdRunMode = m;
 }
 
-void setHorn(unsigned int duration) {
-  lastHornMs = millis();
-  hornDurationMs = duration;
-  if (enableSerial) Serial.println("Horn");
-}
-
 void setDebugMode(int m) {
   switch (m) {
     case CMD_DEBUG_JOYSTICK:
@@ -352,64 +343,60 @@ void setDebugMode(int m) {
 }
 
 void autopilot() {
-  if (millis() - lastAutopilotAdjustMs > 500) {
-    // restore to default, move forward
-    cmdMoveH = 2;
-    cmdMoveV = 3;
-  }
-
-  bool blocked = !infra4Way1 || !infra4Way2 || !infra4Way3 || !infra4Way4;
-  if (blocked) {
+  if (read4Way()) {
     setHorn(50);
-    cmdMoveV = 1;
-    drive();
-    delay(1000); // move backward 1 second
-    cmdMoveV = 2;
-    drive(); // stop it
+    cmdMoveV = 2; flash(true); drive(); delay(100); // brake
+    cmdMoveV = 1; flash(false); drive(); delay(1000); // move backward a second
+    cmdMoveV = 2; flash(true); drive(); // stop
 
-    servo.write(0 - servoError); // write once, keep its PWM status
-    delay(1000); // wait for the servo to stop
-    int distLeft = checkDistance();
-    servo.write(90 - servoError); // write once, keep its PWM status
-    delay(1000); // wait for the servo to stop
-    int distMiddle = checkDistance();
-    servo.write(180 - servoError); // write once, keep its PWM status
+    servo.write(0 - servoError);
     delay(1000); // wait for the servo to stop
     int distRight = checkDistance();
 
+    servo.write(180 - servoError); // write once, keep its PWM status
+    delay(1000); // wait for the servo to stop
+    int distLeft = checkDistance();
+
     // adjust strategy
-    if (distLeft >= distMiddle && distLeft >= distRight) {
-      setHorn(100);
+    if (distLeft >= distRight) {
       cmdMoveH = 1;
-    } else if (distRight >= distMiddle && distRight >= distLeft) {
-      setHorn(2000);
-      cmdMoveH = 3;
     } else {
-      setHorn(5000);
-      cmdMoveH = 2;
+      cmdMoveH = 3;
     }
     cmdMoveV = 3;
+    flash(false);
     lastAutopilotAdjustMs = millis();
+  }
+  if (millis() - lastAutopilotAdjustMs > 500) { // turning is over, restore to default, move forward
+    cmdMoveH = 2;
+    cmdMoveV = 3;
+    flash(false);
   }
   drive();
 }
 
 void drive() {
-  bool blocked = !infra4Way1 || !infra4Way2 || !infra4Way3 || !infra4Way4;
-  if (blocked && cmdMoveV == 3) {
-    setHorn(50);
+  if (read4Way() && cmdMoveV == 3) {
+    setHorn(100);
+    flash(true);    
     cmdMoveV = 2; // brake if going forward
   }
 
   if (cmdMoveH == 1) { // left
-    analogWrite(PIN_WHEEL_LEFT_PWM, 100);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 230);
+    analogWrite(PIN_WHEEL_LEFT_PWM, 0);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+    bitWrite(hc595Bits, REG_LED_LEFT, 1);
+    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
   } else if (cmdMoveH == 3) { // right
     analogWrite(PIN_WHEEL_LEFT_PWM, 230);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 100);
+    analogWrite(PIN_WHEEL_RIGHT_PWM, 0);
+    bitWrite(hc595Bits, REG_LED_LEFT, 0);
+    bitWrite(hc595Bits, REG_LED_RIGHT, 1);
   } else { // straight
     analogWrite(PIN_WHEEL_LEFT_PWM, 230);
     analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+    bitWrite(hc595Bits, REG_LED_LEFT, 0);
+    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
   }
 
   if (cmdMoveV == 1) { // backward
@@ -435,6 +422,7 @@ void drive() {
   } else {
     bitWrite(hc595Bits, REG_HORN_OUT, 0);
   }
+
   output595Bits();
 }
 
@@ -488,31 +476,60 @@ void dance() {
 }
 
 int checkDistance() {
-  digitalWrite(PIN_SRF05_TRIG, LOW);
-  delayMicroseconds(2);
-  digitalWrite(PIN_SRF05_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(PIN_SRF05_TRIG, LOW);
-  unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);
-  if (duration < 0) {
-    setHorn(300);
+  int tmp = 0;
+  for (int i = 0; i < 3 && tmp <= 0; i++) {
+    bitWrite(hc595Bits, REG_LED_LEFT, 1); // light up both when testing distance
+    bitWrite(hc595Bits, REG_LED_RIGHT, 1);
+    output595Bits();
+    delay(100); // the robot must be still for at least 100ms before testing distance
+    digitalWrite(PIN_SRF05_TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(PIN_SRF05_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(PIN_SRF05_TRIG, LOW);
+    unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);
+    tmp = duration / 58.8; // divide by 29, then 2 (round trip)
+    bitWrite(hc595Bits, REG_LED_LEFT, 0);
+    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
+    output595Bits();
+  } // sometimes the duration is really too small due to interference, have to retry
+  if (tmp <= 0) {
+    setHorn(5000); // something very wrong
+    tmp = 1; // default if not deteced within 3 times
   }
-  ultraSonicDistanceCM = duration / 58.8; // divide by 29, then 2 (round trip)
-  if ( ((byte) ultraSonicDistanceCM >> 8) < 0) {
-    setHorn(3000);
-  }
-  return ultraSonicDistanceCM;
+  ultraSonicDistanceCM = tmp;
+  return tmp;
 }
 
-bool matchCmd (const byte * p1, const byte * p2) {
+bool read4Way() {
+  // avoiding crash is important so we have to read very frequently, ignore the telemetry interval, always read the latest
+  infra4Way1 = digitalRead(PIN_LED_1); //LOW if blocked
+  infra4Way2 = digitalRead(PIN_LED_2);
+  infra4Way3 = digitalRead(PIN_LED_3);
+  infra4Way4 = digitalRead(PIN_LED_4);
+  return !infra4Way1 || !infra4Way2 || !infra4Way3 || !infra4Way4;
+}
+
+bool matchCmd(const byte * p1, const byte * p2) {
   for (int i = 0; i < 4; i++) {
     if (* p1++ != * p2++) return false;
   }
   return true;
 }
 
+void flash(boolean on) {
+  bitWrite(hc595Bits, REG_LED_DEBUG, on);
+  output595Bits();
+}
+
 void output595Bits() {
   digitalWrite(PIN_OUT_STCP, LOW);
   shiftOut(PIN_OUT_DS, PIN_OUT_SHCP, MSBFIRST, hc595Bits);
   digitalWrite(PIN_OUT_STCP, HIGH);
+}
+
+void setHorn(unsigned int duration) {
+  lastHornMs = millis();
+  hornDurationMs = duration;
+  if (enableSerial) Serial.println("Horn");
 }
