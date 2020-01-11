@@ -349,6 +349,7 @@ void autopilot() {
     int distLeft = checkDistance();
 
     servo.write(90 - servoError); // better looking, face foward
+    delay(1000); // wait for the servo to stop
 
     // adjust strategy
     if (distLeft >= distRight) {
