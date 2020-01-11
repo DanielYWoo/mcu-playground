@@ -82,7 +82,7 @@ byte countWheelR = 0;
 double lastWheelSpeedL = 0; // last
 double lastWheelSpeedR = 0;
 double wheelPWML = 230; // output
-double wheelPWMR = 200;
+double wheelPWMR = 210;
 long lastAutopilotAdjustMs = 0;
 
 // -------------- horn -----------------
