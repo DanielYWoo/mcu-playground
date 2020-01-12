@@ -239,7 +239,7 @@ void sendTelemetry() {
       sendCommand(CMD_TELE_PID, 1, 1); // don't exceed 255, test
       break;
     case CMD_DEBUG_WHEEL_COUNTER:
-      sendCommand(CMD_TELE_WHEEL_COUNTER, (byte) wheelPWML, (byte) wheelPWMR); // don't exceed 255
+      sendCommand(CMD_TELE_WHEEL_COUNTER, (byte) lastWheelSpeedL, (byte) lastWheelSpeedR); // don't exceed 255
       break;
     case CMD_DEBUG_4WAY_OBSTACLE_DETECTION:
       if (!infra4Way1) flags |= B00000001;
