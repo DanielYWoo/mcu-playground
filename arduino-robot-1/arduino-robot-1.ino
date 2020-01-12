@@ -19,20 +19,20 @@ const int PIN_OUT_STCP = 4;
 byte hc595Bits = 0;
 
 const int REG_LED_DEBUG = 0; // debug
-const int REG_LED_LEFT = 6;
-const int REG_LED_RIGHT = 7;
+const int REG_LED_L = 6;
+const int REG_LED_R = 7;
 
 // wheels, including 4 pins of 595 chip
-const int REG_WHEEL_LEFT_OUT1 = 2;
-const int REG_WHEEL_LEFT_OUT2 = 3;
-const int REG_WHEEL_RIGHT_OUT3 = 4;
-const int REG_WHEEL_RIGHT_OUT4 = 5;
-const int PIN_WHEEL_LEFT_PWM = 5;
-const int PIN_WHEEL_RIGHT_PWM = 6;
+const int REG_WHEEL_L_OUT1 = 2;
+const int REG_WHEEL_L_OUT2 = 3;
+const int REG_WHEEL_R_OUT3 = 4;
+const int REG_WHEEL_R_OUT4 = 5;
+const int PIN_WHEEL_PWML = 5;
+const int PIN_WHEEL_PWMR = 6;
 
 // speed, counter
-const int PIN_WHEEL_LEFT_COUNTER = 2; // must be 2/3 to use interrupt
-const int PIN_WHEEL_RIGHT_COUNTER = 3; // must be 2/3 to use interrupt
+const int PIN_WHEEL_COUNTER_L = 2; // must be 2/3 to use interrupt
+const int PIN_WHEEL_COUNTER_R = 3; // must be 2/3 to use interrupt
 
 // servo
 const int PIN_SERVO_PWM = 9;
@@ -140,16 +140,16 @@ void setup() {
   pinMode(PIN_OUT_DS, OUTPUT);
   pinMode(PIN_OUT_SHCP, OUTPUT);
   pinMode(PIN_OUT_STCP, OUTPUT);
-  pinMode(PIN_WHEEL_LEFT_PWM, OUTPUT);
-  pinMode(PIN_WHEEL_RIGHT_PWM, OUTPUT);
+  pinMode(PIN_WHEEL_PWML, OUTPUT);
+  pinMode(PIN_WHEEL_PWMR, OUTPUT);
   pinMode(PIN_SRF05_TRIG, OUTPUT);
   pinMode(PIN_SRF05_ECHO, INPUT);
 
   servo.attach(PIN_SERVO_PWM);
   servo.write(servoDegree - servoError);
 
-  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_LEFT_COUNTER), countWheelLeft, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_RIGHT_COUNTER), countWheelRight, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_COUNTER_L), onCountWheelL, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_WHEEL_COUNTER_R), onCountWheelR, CHANGE);
 
   radio.begin();
   radio.openWritingPipe(RF24_ADDR_RC);
@@ -184,11 +184,11 @@ void loop() {
   sendTelemetry();
 }
 
-void countWheelLeft() {
+void onCountWheelL() {
   countWheelL++;
 }
 
-void countWheelRight() {
+void onCountWheelR() {
   countWheelR++;
 }
 
@@ -377,37 +377,37 @@ void drive() {
   }
 
   if (cmdMoveH == 1) { // left
-    analogWrite(PIN_WHEEL_LEFT_PWM, 0);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, wheelPWMR);
-    bitWrite(hc595Bits, REG_LED_LEFT, 1);
-    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
+    analogWrite(PIN_WHEEL_PWML, cmdMoveV == 3 || cmdMoveV == 1 ? wheelPWML / 2 : 0);
+    analogWrite(PIN_WHEEL_PWMR, wheelPWMR);
+    bitWrite(hc595Bits, REG_LED_L, 1);
+    bitWrite(hc595Bits, REG_LED_R, 0);
   } else if (cmdMoveH == 3) { // right
-    analogWrite(PIN_WHEEL_LEFT_PWM, wheelPWML);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, 0);
-    bitWrite(hc595Bits, REG_LED_LEFT, 0);
-    bitWrite(hc595Bits, REG_LED_RIGHT, 1);
+    analogWrite(PIN_WHEEL_PWML, wheelPWML);
+    analogWrite(PIN_WHEEL_PWMR, cmdMoveV == 3 || cmdMoveV == 1 ? wheelPWMR / 2 : 0);
+    bitWrite(hc595Bits, REG_LED_L, 0);
+    bitWrite(hc595Bits, REG_LED_R, 1);
   } else { // straight
-    analogWrite(PIN_WHEEL_LEFT_PWM, wheelPWML);
-    analogWrite(PIN_WHEEL_RIGHT_PWM, wheelPWMR);
-    bitWrite(hc595Bits, REG_LED_LEFT, 0);
-    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
+    analogWrite(PIN_WHEEL_PWML, wheelPWML);
+    analogWrite(PIN_WHEEL_PWMR, wheelPWMR);
+    bitWrite(hc595Bits, REG_LED_L, 0);
+    bitWrite(hc595Bits, REG_LED_R, 0);
   }
 
   if (cmdMoveV == 1) { // backward
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 1);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 1);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT1, 0);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT2, 1);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT3, 0);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT4, 1);
   } else if (cmdMoveV == 3) { // forward
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 1);
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 1);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT1, 1);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT2, 0);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT3, 1);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT4, 0);
   } else { // brake
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
-    bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
-    bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT1, 0);
+    bitWrite(hc595Bits, REG_WHEEL_L_OUT2, 0);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT3, 0);
+    bitWrite(hc595Bits, REG_WHEEL_R_OUT4, 0);
   }
 
   unsigned long now = millis();
@@ -428,38 +428,38 @@ void dance() {
   switch (danceAction[danceIndex] & B1100) {
     case B0000:
       if (enableSerial) Serial.println("Dance Left Still");
-      analogWrite(PIN_WHEEL_LEFT_PWM, 0);
+      analogWrite(PIN_WHEEL_PWML, 0);
       break;
     case B0100:
       if (enableSerial) Serial.println("Dance Left Forward");
-      bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 1);
-      bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 0);
-      analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+      bitWrite(hc595Bits, REG_WHEEL_L_OUT1, 1);
+      bitWrite(hc595Bits, REG_WHEEL_L_OUT2, 0);
+      analogWrite(PIN_WHEEL_PWML, 200);
       break;
     case B1000:
       if (enableSerial) Serial.println("Dance Left Backward");
-      bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT1, 0);
-      bitWrite(hc595Bits, REG_WHEEL_LEFT_OUT2, 1);
-      analogWrite(PIN_WHEEL_LEFT_PWM, 200);
+      bitWrite(hc595Bits, REG_WHEEL_L_OUT1, 0);
+      bitWrite(hc595Bits, REG_WHEEL_L_OUT2, 1);
+      analogWrite(PIN_WHEEL_PWML, 200);
       break;
   }
 
   switch (danceAction[danceIndex] & B0011) {
     case B0000:
-      analogWrite(PIN_WHEEL_RIGHT_PWM, 0);
+      analogWrite(PIN_WHEEL_PWMR, 0);
       if (enableSerial) Serial.println("Dance Right Still");
       break;
     case B0001:
       if (enableSerial) Serial.println("Dance Right Forward");
-      bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 1);
-      bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 0);
-      analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+      bitWrite(hc595Bits, REG_WHEEL_R_OUT3, 1);
+      bitWrite(hc595Bits, REG_WHEEL_R_OUT4, 0);
+      analogWrite(PIN_WHEEL_PWMR, 200);
       break;
     case B0010:
       if (enableSerial) Serial.println("Dance Right Backward");
-      bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT3, 0);
-      bitWrite(hc595Bits, REG_WHEEL_RIGHT_OUT4, 1);
-      analogWrite(PIN_WHEEL_RIGHT_PWM, 200);
+      bitWrite(hc595Bits, REG_WHEEL_R_OUT3, 0);
+      bitWrite(hc595Bits, REG_WHEEL_R_OUT4, 1);
+      analogWrite(PIN_WHEEL_PWMR, 200);
       break;
   }
   bitWrite(hc595Bits, REG_HORN_OUT, 0);
@@ -472,8 +472,8 @@ void dance() {
 int checkDistance() {
   int tmp = 0;
   for (int i = 0; i < 3 && tmp <= 0; i++) {
-    bitWrite(hc595Bits, REG_LED_LEFT, 1); // light up both when testing distance
-    bitWrite(hc595Bits, REG_LED_RIGHT, 1);
+    bitWrite(hc595Bits, REG_LED_L, 1); // light up both when testing distance
+    bitWrite(hc595Bits, REG_LED_R, 1);
     output595Bits();
     delay(100); // the robot must be still for at least 100ms before testing distance
     digitalWrite(PIN_SRF05_TRIG, LOW);
@@ -483,8 +483,8 @@ int checkDistance() {
     digitalWrite(PIN_SRF05_TRIG, LOW);
     unsigned long duration = pulseIn(PIN_SRF05_ECHO, HIGH, 15000);
     tmp = duration / 58.8; // divide by 29, then 2 (round trip)
-    bitWrite(hc595Bits, REG_LED_LEFT, 0);
-    bitWrite(hc595Bits, REG_LED_RIGHT, 0);
+    bitWrite(hc595Bits, REG_LED_L, 0);
+    bitWrite(hc595Bits, REG_LED_R, 0);
     output595Bits();
   } // sometimes the duration is really too small due to interference, have to retry
   if (tmp <= 0) {

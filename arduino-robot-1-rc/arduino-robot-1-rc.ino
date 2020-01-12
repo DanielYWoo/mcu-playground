@@ -1,5 +1,6 @@
 /**
    remote control with a Nano or Pro Mini
+   todo: 1502 affects analogRead
 */
 // for 1602
 #include <LiquidCrystal.h>
@@ -10,8 +11,8 @@
 #include <RF24.h>
 
 // -------------- Pins -----------------
-const int PIN_JOYSTICK_V = A4;
-const int PIN_JOYSTICK_H = A6;
+const int PIN_JOYSTICK_V = A5;
+const int PIN_JOYSTICK_H = A4;
 
 const int PIN_1602_RS = 7;
 const int PIN_1602_EN = 6;
@@ -233,7 +234,7 @@ void setDebugMode(int m) {
 }
 
 void checkInput() {
-  if (millis() - lastControlMs < 50) return; // debounce buttons
+  if (millis() - lastControlMs < 30) return; // debounce buttons
   int btn1 = digitalRead(PIN_BTN_1);
   if (lastBtn1 == HIGH && btn1 == LOW) { // avoid repeating while keeping the button pressed
     setRunMode(((int) cmdRunMode + 1) % 4);
@@ -258,52 +259,20 @@ void checkInput() {
   }
   lastBtn4 = btn4;
 
-  int h = analogRead(PIN_JOYSTICK_H); //165-835, per stick
-  delay(100);
-  int v = analogRead(PIN_JOYSTICK_V); //215-730, per stick
-  Serial.print(h);
-  Serial.print('\t');
-  Serial.println(v);
-  if (h > 800) {
-    cmdMoveH = 3;
-  } else if (h < 200) {
+  int h = analogRead(PIN_JOYSTICK_H);
+  int v = analogRead(PIN_JOYSTICK_V);
+  //Serial.print(h); Serial.print('\t'); Serial.println(v);
+  // because of LCD interference, we have to hack the joy stick read a little bit
+  if (h < 120) {
     cmdMoveH = 1;
+    if (v < 80) cmdMoveV = 1; else if (v > 180) cmdMoveV = 3; else cmdMoveV = 2;
+  } else if (h > 980) {
+    cmdMoveH = 3;
+    if (v < 850) cmdMoveV = 1; else if (v > 950) cmdMoveV = 3; else cmdMoveV = 2;
   } else {
     cmdMoveH = 2;
-  }
-  if (v > 800) {
-    cmdMoveV = 3;
-  } else if (v < 450) {
-    cmdMoveV = 1;
-  } else {
-    cmdMoveV = 2;
-  }
-
-  
-/*
-  h = (h - 165) * 1.4925 - 498;
-  v = (v - 215) * 1.9417 - 495;
-
-  int hNoise = v * 0.355;
-  int vNoise = h * 0.765;
-  h = (int) ((h - hNoise) / 100);
-  v = (int) ((v - vNoise) / 100);
-  // now h v ranges from -3 to 3.
-  if (h < 0) {
-    cmdMoveH = 1;
-  } else if (h > 0) {
-    cmdMoveH = 3;
-  } else {
-    cmdMoveH = 2;
-  }
-  if (v < 0) {
-    cmdMoveV = 1;
-  } else if (v > 0) {
-    cmdMoveV = 3;
-  } else {
-    cmdMoveV = 2;
-  }
-  */
+    if (v < 450) cmdMoveV = 1; else if (v > 600) cmdMoveV = 3; else cmdMoveV = 2;
+  }  
   sendCommand(CMD_MOVE, cmdMoveH, cmdMoveV); // this is a speical continuous message
   lastControlMs = millis();
 }
