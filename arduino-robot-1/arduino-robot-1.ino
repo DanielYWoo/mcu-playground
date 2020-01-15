@@ -82,7 +82,7 @@ byte countWheelR = 0;
 double lastWheelSpeedL = 0; // last
 double lastWheelSpeedR = 0;
 double wheelPWML = 230; // output
-double wheelPWMR = 210;
+double wheelPWMR = 205;
 long lastAutopilotAdjustMs = 0;
 
 // -------------- horn -----------------
@@ -192,7 +192,10 @@ void onCountWheelR() {
   countWheelR++;
 }
 
-void receiveCommand() {
+/**
+ * returns true if run mode changes
+ */
+bool receiveCommand() {
   if (!radio.available()) return;
   const char cmd[32];
   radio.read(&cmd, sizeof(cmd));
@@ -207,6 +210,7 @@ void receiveCommand() {
   if (matchCmd(cmd, CMD_MODE)) { // change run mode
     setRunMode(cmd[4]);
     setHorn(300);
+    return true;
   } else if ((cmdRunMode == CMD_MODE_MANUAL_NOPID || cmdRunMode == CMD_MODE_MANUAL_PID) && matchCmd(cmd, CMD_MOVE)) {
     // move is special, in manual mode you must continuously receive command
     cmdMoveH = cmd[4];
@@ -221,9 +225,12 @@ void receiveCommand() {
     setHorn(100);
     servoDegree = (servoDegree + 45) % 225;
     servo.write(servoDegree - servoError); // write once, keep its PWM status
-    delay(1000); // wait for the servo to stop
+    if (delayAndReceive(1000)) { // wait for the servo to stop
+      return; // cancel
+    } 
     checkDistance();
   }
+  return false;
 }
 
 void sendTelemetry() {
@@ -336,20 +343,20 @@ void setDebugMode(int m) {
 void autopilot() {
   if (read4Way()) {
     setHorn(50);
-    cmdMoveV = 2; flash(true); drive(); delay(100); // brake
-    cmdMoveV = 1; flash(false); drive(); delay(1000); // move backward a second
+    cmdMoveV = 2; flash(true); drive(); if (delayAndReceive(100)) return; // brake
+    cmdMoveV = 1; flash(false); drive(); if (delayAndReceive(1000)) return; // move backward a second
     cmdMoveV = 2; flash(true); drive(); // stop
 
     servo.write(0 - servoError);
-    delay(1000); // wait for the servo to stop
+    if (delayAndReceive(1000)) return; // wait for the servo to stop
     int distRight = checkDistance();
 
     servo.write(180 - servoError); // write once, keep its PWM status
-    delay(1000); // wait for the servo to stop
+    if (delayAndReceive(1000)) return; // wait for the servo to stop
     int distLeft = checkDistance();
 
     servo.write(90 - servoError); // better looking, face foward
-    delay(1000); // wait for the servo to stop
+    if (delayAndReceive(1000)) return; // wait for the servo to stop
 
     // adjust strategy
     if (distLeft >= distRight) {
@@ -377,13 +384,13 @@ void drive() {
   }
 
   if (cmdMoveH == 1) { // left
-    analogWrite(PIN_WHEEL_PWML, cmdMoveV == 3 || cmdMoveV == 1 ? wheelPWML / 2 : 0);
+    analogWrite(PIN_WHEEL_PWML, 0);
     analogWrite(PIN_WHEEL_PWMR, wheelPWMR);
     bitWrite(hc595Bits, REG_LED_L, 1);
     bitWrite(hc595Bits, REG_LED_R, 0);
   } else if (cmdMoveH == 3) { // right
     analogWrite(PIN_WHEEL_PWML, wheelPWML);
-    analogWrite(PIN_WHEEL_PWMR, cmdMoveV == 3 || cmdMoveV == 1 ? wheelPWMR / 2 : 0);
+    analogWrite(PIN_WHEEL_PWMR, 0);
     bitWrite(hc595Bits, REG_LED_L, 0);
     bitWrite(hc595Bits, REG_LED_R, 1);
   } else { // straight
@@ -475,7 +482,7 @@ int checkDistance() {
     bitWrite(hc595Bits, REG_LED_L, 1); // light up both when testing distance
     bitWrite(hc595Bits, REG_LED_R, 1);
     output595Bits();
-    delay(100); // the robot must be still for at least 100ms before testing distance
+    delayAndReceive(100); // the robot must be still for at least 100ms before testing distance
     digitalWrite(PIN_SRF05_TRIG, LOW);
     delayMicroseconds(2);
     digitalWrite(PIN_SRF05_TRIG, HIGH);
@@ -526,4 +533,13 @@ void setHorn(unsigned int duration) {
   lastHornMs = millis();
   hornDurationMs = duration;
   if (enableSerial) Serial.println("Horn");
+}
+
+bool delayAndReceive(int delayMs) {
+  long lastTs = millis();
+  do {
+    delay(10);
+    if (receiveCommand()) return true;
+  } while (millis() - lastTs <= delayMs);
+  return false;
 }
