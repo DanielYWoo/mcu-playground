@@ -1,4 +1,3 @@
-
 #include <Otto9.h>
 #include <SoftwareSerial.h>
 
@@ -7,11 +6,12 @@
 #define PIN_YR 3 //servo[1]  right leg
 #define PIN_RL 4 //servo[2]  left foot
 #define PIN_RR 5 //servo[3]  right foot
+#define PIN_Buzzer   6
 #define PIN_Trigger  8  //TRIGGER pin (8)
 #define PIN_Echo     9  //ECHO pin (9)
 #define PIN_SOFT_RX  10
 #define PIN_SOFT_TX  11
-#define PIN_Buzzer   6
+#define PIN_BT_STATUS  12
 
 
 Otto9 zhamao;
@@ -26,17 +26,40 @@ SoftwareSerial BTSerial(PIN_SOFT_RX, PIN_SOFT_TX); // Arduino RX|TX, HC05 TX|RX
 #define MOVE_SPEED 800
 
 
-
 byte buf[32];
 int bufIndex = 0;
+unsigned long lastHeartbeat = millis();
+
+void ensureConnected(boolean forceConnect) {
+  if (millis() - lastHeartbeat > 10000) {
+    echo("heatbeat");
+    lastHeartbeat = millis();
+  }
+  if (!forceConnect && digitalRead(PIN_BT_STATUS) == HIGH) {
+    return;
+  }
+  
+  zhamao.sing(S_mode3); //disconnected  
+  while (digitalRead(PIN_BT_STATUS) == LOW) {
+    Serial.println("connecting bluetooth...");
+    delay(1000);
+  }
+  
+  BTSerial.begin(38400);
+  zhamao.sing(S_mode1); //connected
+  Serial.println("connected.");
+  BTSerial.println("Hello, I am here.");
+}
 
 bool receiveCommand() {
+  delay(500);
+  BTSerial.print('.');
   byte b = BTSerial.read();
   if (b == 255) {
     return false; // no data
   }
-  //Serial.print("incoming byte:");
-  //Serial.println(b);
+  Serial.print("incoming byte:");
+  Serial.println(b);
   if (bufIndex >= 31) {
     BTSerial.println("Error: Command too long");
     Serial.println("Error: Command too long");
@@ -68,26 +91,29 @@ void debugDistance() {
 
 void setup()
 {
-  delay(2000);
   Serial.begin(9600);
-  BTSerial.begin(9600);
+  delay(2000);
+  Serial.println("v3");
 
   zhamao.init(PIN_YL, PIN_YR, PIN_RL, PIN_RR, true, A6, PIN_Buzzer, PIN_Trigger, PIN_Echo); //Set the servo pins and ultrasonic pins and Buzzer pin
   zhamao.sing(S_connection); //Otto wake up!
   zhamao.home();
   delay(50);
 
-  Serial.println("Initialized, receiving commands:");
+  Serial.println("Initialized, waiting for bluetooth connection");  
+  ensureConnected(true);
 }
 
 void loop()
 {  
+  ensureConnected(false);
+  
   //debugDistance();
   
   if (!receiveCommand()) {
     return;
   }
-
+  
   if (buf[0] == CMD_HELP) {
     echo("Welcome, ? -> help, s -> stand, arrow -> move");    
     resetCommand();
@@ -127,7 +153,7 @@ void loop()
       Serial.print("expect buf[0/1]=27,91, but buf[1] is");
       Serial.println(buf[1]);
     }
-  }  
+  }
   resetCommand();
   
 }

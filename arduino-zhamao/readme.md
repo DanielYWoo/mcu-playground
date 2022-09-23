@@ -1,0 +1,9 @@
+# schematic
+
+
+
+# bluetooth pairing
+
+
+
+# control
