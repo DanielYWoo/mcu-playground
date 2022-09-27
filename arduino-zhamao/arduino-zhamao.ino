@@ -25,15 +25,17 @@ SoftwareSerial BTSerial(PIN_SOFT_RX, PIN_SOFT_TX); // Arduino RX|TX, HC05 TX|RX
 #define CMD_WALK_RIGHT 67
 #define MOVE_SPEED 800
 
+/*
 
 byte buf[32];
 int bufIndex = 0;
 unsigned long lastHeartbeat = millis();
 
 void ensureConnected(boolean forceConnect) {
-  if (millis() - lastHeartbeat > 10000) {
+  unsigned long now = millis();  
+  if (now - lastHeartbeat > 10000) {
     echo("heatbeat");
-    lastHeartbeat = millis();
+    lastHeartbeat = now;
   }
   if (!forceConnect && digitalRead(PIN_BT_STATUS) == HIGH) {
     return;
@@ -54,6 +56,7 @@ void ensureConnected(boolean forceConnect) {
 bool receiveCommand() {
   delay(500);
   BTSerial.print('.');
+  Serial.print('.');
   byte b = BTSerial.read();
   if (b == 255) {
     return false; // no data
@@ -78,8 +81,7 @@ void resetCommand() {
 
 void echo(const String& str) {  
   BTSerial.println(str);
-  Serial.println(str);
-  delay(10);
+  Serial.println(str);  
 }
 
 void debugDistance() {
@@ -156,4 +158,21 @@ void loop()
   }
   resetCommand();
   
+}
+*/
+
+void setup()
+{
+  pinMode(PIN_SOFT_RX, INPUT);
+  pinMode(PIN_SOFT_TX, OUTPUT);
+  Serial.begin(9600);
+  BTSerial.begin(9600);
+  Serial.println("started");
+}
+
+void loop()
+{  
+  BTSerial.write('x');
+  Serial.print('.');
+  delay(1000);
 }
